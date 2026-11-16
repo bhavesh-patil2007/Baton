@@ -73,8 +73,102 @@ def get_plan(session: Session, user: User, version_id: str) -> dict:
     _, filtered = _load(user, version_id)
     plan = builders.build_plan(filtered.visible, user.id)
     _save_plan(session, user, version_id, plan)
+
+    # Attach live action status to plan items
+    status_rows = session.execute(
+        text("select claim_id, status, owner, due_date, notes, updated_by, updated_at from plan_action_status where version_id = :v"),
+        {"v": version_id},
+    ).mappings().all()
+    status_map = {r["claim_id"]: dict(r) for r in status_rows}
+
+    for bucket_items in plan.values():
+        for item in bucket_items:
+            cid = item["claim_id"]
+            if cid in status_map:
+                s = status_map[cid]
+                item["action_status"] = s["status"]
+                item["action_notes"] = s["notes"]
+                item["action_updated_at"] = s["updated_at"]
+                item["action_updated_by"] = s["updated_by"]
+                if s.get("owner"):
+                    item["owner"] = s["owner"]
+                if s.get("due_date"):
+                    item["due_date"] = s["due_date"]
+            else:
+                item["action_status"] = "not_started"
+                item["action_notes"] = None
+                item["action_updated_at"] = None
+                item["action_updated_by"] = None
+
     audit.log(session, user, "handover.plan", obj=version_id)
     return {"version_id": version_id, "role": user.role, "plan": plan, "note": builders.PLAN_NOTE}
+
+
+def update_action_status(
+    session: Session,
+    user: User,
+    version_id: str,
+    claim_id: str,
+    status: str,
+    owner: str | None = None,
+    due_date: str | None = None,
+    notes: str | None = None,
+) -> dict:
+    if user.role not in builders.ACK_ROLES and user.role not in builders.VIEW_ROLES:
+        raise HTTPException(status_code=403, detail="Your role cannot update action plan status.")
+
+    _, filtered = _load(user, version_id)
+    matching_claim = next((c for c in filtered.visible if c.get("claim_id") == claim_id), None)
+    if matching_claim is None:
+        raise HTTPException(status_code=404, detail="Action item not found in your handover plan.")
+
+    when = audit.now_iso()
+    params = {
+        "v": version_id,
+        "c": claim_id,
+        "p": user.project_id,
+        "status": status,
+        "owner": owner or matching_claim.get("owner"),
+        "due_date": due_date or matching_claim.get("due_date"),
+        "notes": notes,
+        "user_id": user.id,
+        "at": when,
+    }
+    existing = session.execute(
+        text("select id from plan_action_status where version_id = :v and claim_id = :c"),
+        {"v": version_id, "c": claim_id},
+    ).first()
+
+    if existing:
+        session.execute(
+            text("""
+                update plan_action_status
+                set status = :status, owner = :owner, due_date = :due_date, notes = :notes,
+                    updated_by = :user_id, updated_at = :at
+                where id = :id
+            """),
+            {**params, "id": existing[0]},
+        )
+    else:
+        session.execute(
+            text("""
+                insert into plan_action_status (id, version_id, project_id, claim_id, status, owner, due_date, notes, updated_by, updated_at)
+                values (:id, :v, :p, :c, :status, :owner, :due_date, :notes, :user_id, :at)
+            """),
+            {**params, "id": uuid.uuid4().hex},
+        )
+    session.commit()
+    audit.log(session, user, f"handover.action_status.{status}", obj=f"{version_id}:{claim_id}")
+    return {
+        "version_id": version_id,
+        "claim_id": claim_id,
+        "status": status,
+        "owner": params["owner"],
+        "due_date": params["due_date"],
+        "notes": notes,
+        "updated_at": when,
+        "updated_by": user.id,
+    }
 
 
 def acknowledge(session: Session, user: User, version_id: str, section: str) -> dict:

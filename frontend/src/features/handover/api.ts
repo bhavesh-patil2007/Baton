@@ -56,6 +56,10 @@ export interface PlanItem {
   cycle: boolean;
   level: number;
   position: number;
+  action_status?: "not_started" | "in_progress" | "blocked" | "completed";
+  action_notes?: string | null;
+  action_updated_at?: string | null;
+  action_updated_by?: string | null;
   evidence: EvidenceView[];
 }
 
@@ -80,4 +84,22 @@ export const respondOwnership = (versionId: string, claimId: string, response: "
   api<{ claim_id: string; response: string }>("/handover/ownership", {
     method: "POST",
     body: { version_id: versionId, claim_id: claimId, response },
+  });
+
+export const updateActionStatus = (
+  versionId: string,
+  claimId: string,
+  status: "not_started" | "in_progress" | "blocked" | "completed",
+  notes?: string
+) =>
+  api<{
+    version_id: string;
+    claim_id: string;
+    status: string;
+    notes: string | null;
+    updated_at: string;
+    updated_by: string;
+  }>("/handover/action-status", {
+    method: "POST",
+    body: { version_id: versionId, claim_id: claimId, status, notes },
   });
