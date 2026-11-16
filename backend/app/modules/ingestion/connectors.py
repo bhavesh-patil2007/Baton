@@ -266,7 +266,7 @@ class JiraConnector:
 
         records: list[ParsedRecord] = []
         page_token: str | None = None
-        for page_number in range(MAX_PAGES):
+        for _page_number in range(MAX_PAGES):
             response = self._search_page(jql, page_token)
             issues = response.get("issues", [])
             if not isinstance(issues, list):
