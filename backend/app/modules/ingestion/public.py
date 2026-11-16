@@ -39,6 +39,7 @@ def sync_connection(project_id: str, connection_id: str, session: Session) -> di
 
 
 def reset_demo(session: Session) -> None:
+    session.execute(text("delete from source_sync_records where project_id = 'proj-campus-event-portal'"))
     session.execute(text("delete from source_connections where project_id = 'proj-campus-event-portal'"))
     session.execute(text("delete from source_chunks where project_id = 'proj-campus-event-portal' and source_id not like 'S%'"))
     session.execute(text("delete from sources where project_id = 'proj-campus-event-portal' and id not like 'S%'"))

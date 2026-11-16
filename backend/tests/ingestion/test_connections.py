@@ -1,78 +1,130 @@
+from datetime import UTC, datetime
+
+from app.modules.ingestion import connectors
+from app.modules.ingestion.service import ParsedRecord
 from tests.conftest import login
 
 
-def test_source_connections_lifecycle(client):
+def _record(text: str, external_id: str) -> ParsedRecord:
+    return ParsedRecord(
+        text=text,
+        author="Baton Test User",
+        event_time=datetime(2026, 11, 15, 10, 0, tzinfo=UTC),
+        external_id=external_id,
+    )
+
+
+def test_source_connections_lifecycle(client, monkeypatch):
     approver = login(client, "approver")
     contributor = login(client, "incoming_contributor")
 
-    # 1. Contributor cannot create connection
-    res = client.post(
+    # Consent is enforced by the API, not only by the browser checkbox.
+    missing_consent = client.post(
         "/sources/connections",
         json={"provider": "github", "target_name": "manjirirelekar47/Baton", "acl_label": "L1"},
+        headers=approver,
+    )
+    assert missing_consent.status_code == 422
+
+    # Contributors cannot create provider connections, even with consent.
+    res = client.post(
+        "/sources/connections",
+        json={
+            "provider": "github",
+            "target_name": "manjirirelekar47/Baton",
+            "acl_label": "L1",
+            "consent": True,
+        },
         headers=contributor,
     )
     assert res.status_code == 403
 
-    # 2. Approver connects GitHub repo
+    github_batches = [
+        [_record("Initial commit summary", "commit:abc123")],
+        [_record("Initial commit summary", "commit:abc123")],
+        [_record("Updated commit summary", "commit:abc123")],
+    ]
+    jira_batches = [[_record("CAMPUS-101: Transfer project ownership", "jira:CAMPUS-101")]]
+
+    def fake_github_fetch(self, checkpoint_cursor=None):
+        return github_batches.pop(0), "2026-11-16T10:00:00+00:00"
+
+    def fake_jira_fetch(self, checkpoint_cursor=None):
+        return jira_batches[0], "2026-11-16T10:00:00+00:00"
+
+    monkeypatch.setattr(connectors.GitHubConnector, "fetch_records", fake_github_fetch)
+    monkeypatch.setattr(connectors.JiraConnector, "fetch_records", fake_jira_fetch)
+
+    # Approver connects a GitHub repository with an explicit authorization confirmation.
     res = client.post(
         "/sources/connections",
-        json={"provider": "github", "target_name": "manjirirelekar47/Baton", "acl_label": "L2"},
+        json={
+            "provider": "github",
+            "target_name": "manjirirelekar47/Baton",
+            "acl_label": "L2",
+            "consent": True,
+        },
         headers=approver,
     )
     assert res.status_code == 201
-    conn = res.json()
-    assert conn["provider"] == "github"
-    assert conn["status"] == "connected"
-    conn_id = conn["id"]
+    conn_id = res.json()["id"]
 
-    # 3. List connections
-    res = client.get("/sources/connections", headers=approver)
-    assert res.status_code == 200
-    assert any(c["id"] == conn_id for c in res.json())
+    # Restricted connection metadata is not exposed to a lower-clearance contributor.
+    approver_connections = client.get("/sources/connections", headers=approver)
+    contributor_connections = client.get("/sources/connections", headers=contributor)
+    assert approver_connections.status_code == contributor_connections.status_code == 200
+    assert any(row["id"] == conn_id for row in approver_connections.json())
+    assert all(row["id"] != conn_id for row in contributor_connections.json())
 
-    # 4. First sync runs and imports records
-    res = client.post(f"/sources/connections/{conn_id}/sync", headers=approver)
-    assert res.status_code == 200
-    sync_res = res.json()
-    assert sync_res["status"] == "succeeded"
-    assert sync_res["records_added"] > 0
-    first_added = sync_res["records_added"]
+    # First sync imports one provider item.
+    first = client.post(f"/sources/connections/{conn_id}/sync", headers=approver)
+    assert first.status_code == 200
+    assert first.json()["status"] == "succeeded"
+    assert first.json()["records_added"] == 1
+    assert first.json()["records_updated"] == 0
 
-    # 5. Second sync unchanged: creates no duplicate records, records_skipped increments
-    res = client.post(f"/sources/connections/{conn_id}/sync", headers=approver)
-    assert res.status_code == 200
-    sync_res2 = res.json()
-    assert sync_res2["status"] == "succeeded"
-    assert sync_res2["records_added"] == first_added
-    assert sync_res2["records_skipped"] >= 1
+    # Repeated identical sync is skipped rather than inserting duplicate evidence.
+    second = client.post(f"/sources/connections/{conn_id}/sync", headers=approver)
+    assert second.status_code == 200
+    assert second.json()["records_added"] == 1
+    assert second.json()["records_updated"] == 0
+    assert second.json()["records_skipped"] == 1
 
-    # 6. Approver connects Jira project and syncs
+    # A changed provider item creates a new immutable snapshot and increments updates.
+    third = client.post(f"/sources/connections/{conn_id}/sync", headers=approver)
+    assert third.status_code == 200
+    assert third.json()["records_added"] == 1
+    assert third.json()["records_updated"] == 1
+    assert third.json()["records_skipped"] == 1
+
     jira_res = client.post(
         "/sources/connections",
-        json={"provider": "jira", "target_name": "CAMPUS", "acl_label": "L1"},
+        json={
+            "provider": "jira",
+            "target_name": "CAMPUS",
+            "acl_label": "L1",
+            "consent": True,
+        },
         headers=approver,
     )
     assert jira_res.status_code == 201
     jira_id = jira_res.json()["id"]
 
-    res = client.post(f"/sources/connections/{jira_id}/sync", headers=approver)
-    assert res.status_code == 200
-    assert res.json()["status"] == "succeeded"
-    assert res.json()["records_added"] > 0
+    jira_sync = client.post(f"/sources/connections/{jira_id}/sync", headers=approver)
+    assert jira_sync.status_code == 200
+    assert jira_sync.json()["status"] == "succeeded"
+    assert jira_sync.json()["records_added"] == 1
 
-    # 7. Imported sources appear in sources list
     sources = client.get("/sources", headers=approver).json()
-    titles = [s["title"] for s in sources]
-    assert any("GitHub: manjirirelekar47/Baton" in t for t in titles)
-    assert any("Jira: CAMPUS" in t for t in titles)
+    titles = [source["title"] for source in sources]
+    assert any("GitHub: manjirirelekar47/Baton" in title for title in titles)
+    assert any("Jira: CAMPUS" in title for title in titles)
 
-    # 8. Contributor sees only L1 sources (not L2 GitHub connection source)
-    contrib_sources = client.get("/sources", headers=contributor).json()
-    contrib_titles = [s["title"] for s in contrib_sources]
-    assert any("Jira: CAMPUS" in t for t in contrib_titles)
-    assert not any("GitHub: manjirirelekar47/Baton" in t for t in contrib_titles)
+    contributor_sources = client.get("/sources", headers=contributor).json()
+    contributor_titles = [source["title"] for source in contributor_sources]
+    assert any("Jira: CAMPUS" in title for title in contributor_titles)
+    assert not any("GitHub: manjirirelekar47/Baton" in title for title in contributor_titles)
 
-    # 9. Delete connection
-    res = client.delete(f"/sources/connections/{conn_id}", headers=approver)
-    assert res.status_code == 200
-    assert res.json()["status"] == "deleted"
+    deleted = client.delete(f"/sources/connections/{conn_id}", headers=approver)
+    assert deleted.status_code == 200
+    assert deleted.json()["status"] == "deleted"

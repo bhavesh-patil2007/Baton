@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ACLLabel = Literal["L1", "L2", "L3", "L4"]
 SourceType = Literal["document", "git", "task_csv", "chat"]
@@ -54,8 +55,34 @@ class SourceCreateMetadata(BaseModel):
 
 class SourceConnectionCreate(BaseModel):
     provider: Literal["github", "jira"]
-    target_name: str
+    target_name: str = Field(min_length=1, max_length=255)
     acl_label: ACLLabel = "L1"
+    consent: bool
+
+    @field_validator("target_name")
+    @classmethod
+    def normalize_target(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("A GitHub repository or Jira project key is required.")
+        return value
+
+    @field_validator("consent")
+    @classmethod
+    def require_connection_consent(cls, value: bool) -> bool:
+        if value is not True:
+            raise ValueError("Confirm that you are authorised to connect and sync this project source.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_target_for_provider(self):
+        if self.provider == "github" and not re.fullmatch(
+            r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", self.target_name
+        ):
+            raise ValueError("GitHub target must use the owner/repository format.")
+        if self.provider == "jira" and not re.fullmatch(r"[A-Z][A-Z0-9_]{1,19}", self.target_name):
+            raise ValueError("Jira target must be a project key such as CAMPUS.")
+        return self
 
     @field_validator("acl_label")
     @classmethod

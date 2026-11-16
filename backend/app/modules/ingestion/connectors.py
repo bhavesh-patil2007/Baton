@@ -1,185 +1,305 @@
-"""Live source sync connectors for GitHub and Jira.
-Fetches bounded metadata, supports incremental checkpoints, redacts secrets,
-and converts records into Baton's immutable evidence chunk format.
+"""Live, read-only source connectors for GitHub and Jira Cloud.
+
+Provider failures are surfaced to the caller; demo data is never substituted for a
+failed live sync. Credentials are read only from the API server environment.
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
+from typing import Any
 
 from app.modules.ingestion.service import ParsedRecord
 
 log = logging.getLogger(__name__)
 
+PAGE_SIZE = 100
+MAX_PAGES = 5
+
+
+class ProviderSyncError(RuntimeError):
+    """A provider request failed or the connector is not configured."""
+
+
+def _parse_datetime(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        parsed = value
+    elif value:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return datetime(1970, 1, 1, tzinfo=UTC)
+    else:
+        return datetime(1970, 1, 1, tzinfo=UTC)
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
+
+def _cursor_datetime(cursor: str | None) -> datetime | None:
+    if not cursor:
+        return None
+    try:
+        return _parse_datetime(cursor)
+    except (TypeError, ValueError) as exc:
+        raise ProviderSyncError("The saved sync checkpoint is invalid. Reconnect the source to reset it.") from exc
+
+
+def _load_json(request: urllib.request.Request) -> Any:
+    """Run one provider request and return JSON without leaking credentials in errors."""
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            message = "Provider authentication or read permission was rejected. Check the server-side credentials and project access."
+        elif exc.code == 404:
+            message = "The provider target was not found or is not accessible to the configured account."
+        elif exc.code == 429:
+            message = "The provider rate limit was reached. Try syncing again later."
+        else:
+            message = f"Provider request failed with HTTP {exc.code}."
+        raise ProviderSyncError(message) from None
+    except (urllib.error.URLError, TimeoutError) as exc:
+        log.warning("Provider network request failed: %s", type(exc).__name__)
+        raise ProviderSyncError("Could not reach the provider. Check the API service network and try again.") from None
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ProviderSyncError("The provider returned an unreadable response.") from None
+
+
+def _adf_to_text(value: Any) -> str:
+    """Flatten Jira's Atlassian Document Format into readable source text."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return " ".join(part for part in (_adf_to_text(item) for item in value) if part)
+    if isinstance(value, dict):
+        own_text = value.get("text") if isinstance(value.get("text"), str) else ""
+        children = _adf_to_text(value.get("content", []))
+        return " ".join(part for part in (own_text, children) if part)
+    return ""
+
 
 class GitHubConnector:
-    """Read-only GitHub repository connector for commits, pull requests, and issues."""
+    """Read-only GitHub repository connector for commits, pull requests and issues."""
 
     def __init__(self, target_repo: str):
         self.target_repo = target_repo.strip()
         self.token = os.environ.get("GITHUB_SYNC_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", self.target_repo):
+            raise ProviderSyncError("GitHub repository must use the owner/repository format.")
 
-    def fetch_records(self, checkpoint_cursor: str | None = None) -> tuple[list[ParsedRecord], str]:
-        """Fetch commits and pull requests since checkpoint_cursor.
-        Returns (records, new_checkpoint_cursor).
-        """
-        records: list[ParsedRecord] = []
-        new_cursor = datetime.now(UTC).isoformat()
-        headers = {"User-Agent": "Baton-Ingestion/1.0", "Accept": "application/vnd.github.v3+json"}
+    def _get_json(self, url: str) -> Any:
+        headers = {
+            "User-Agent": "Baton-Ingestion/1.0",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
+        return _load_json(urllib.request.Request(url, headers=headers))
 
-        # 1. Attempt live GitHub API fetch if target is in owner/repo format
-        if "/" in self.target_repo:
-            owner, repo = self.target_repo.split("/", 1)
-            commits_url = f"https://api.github.com/repos/{owner}/{repo}/commits?per_page=15"
-            if checkpoint_cursor:
-                commits_url += f"&since={checkpoint_cursor}"
+    def _list_records(
+        self,
+        endpoint: str,
+        base_params: dict[str, str],
+        checkpoint: datetime | None,
+        convert,
+        *,
+        stop_when_older: bool = True,
+    ) -> list[ParsedRecord]:
+        records: list[ParsedRecord] = []
+        for page in range(1, MAX_PAGES + 1):
+            params = {**base_params, "per_page": str(PAGE_SIZE), "page": str(page)}
+            url = f"{endpoint}?{urllib.parse.urlencode(params)}"
+            payload = self._get_json(url)
+            if not isinstance(payload, list):
+                raise ProviderSyncError("GitHub returned an unexpected list response.")
 
-            try:
-                req = urllib.request.Request(commits_url, headers=headers)
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    if resp.status == 200:
-                        data = json.loads(resp.read().decode())
-                        for item in data:
-                            commit = item.get("commit", {})
-                            author_info = commit.get("author", {})
-                            author_name = author_info.get("name") or "GitHub Contributor"
-                            date_str = author_info.get("date") or datetime.now(UTC).isoformat()
-                            try:
-                                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                            except Exception:
-                                dt = datetime.now(UTC)
-                            msg = commit.get("message", "").strip()
-                            sha = item.get("sha", "")[:7]
-                            text_body = f"GitHub Commit [{sha}] by {author_name} at {date_str}:\n{msg}"
-                            records.append(ParsedRecord(text=text_body, author=author_name, event_time=dt))
-            except Exception as exc:
-                log.info("Live GitHub fetch fell back to synthetic demo provider (%s)", exc)
+            page_has_older = False
+            for item in payload:
+                record = convert(item)
+                if record is None:
+                    continue
+                if checkpoint and record.event_time <= checkpoint:
+                    page_has_older = True
+                    continue
+                records.append(record)
 
-        # 2. If no remote records retrieved (e.g. rate limit, offline, demo repo), provide bounded sync records
-        if not records:
-            synthetic_commits = [
-                {
-                    "sha": "a1b2c3d",
-                    "author": "Bhavesh Patil",
-                    "time": "2026-11-14T10:15:00+00:00",
-                    "message": "feat(auth): integrate Supabase identity linking and session guard",
-                },
-                {
-                    "sha": "e5f6g7h",
-                    "author": "Rohan Mehra",
-                    "time": "2026-11-14T14:30:00+00:00",
-                    "message": "fix(payments): transfer billing provider webhook verification",
-                },
-                {
-                    "sha": "j8k9l0m",
-                    "author": "Samiksha Rao",
-                    "time": "2026-11-15T09:45:00+00:00",
-                    "message": "refactor(extraction): optimize fuzzy matching threshold for quote verification",
-                },
-            ]
-            for c in synthetic_commits:
-                dt = datetime.fromisoformat(c["time"])
-                if checkpoint_cursor:
-                    try:
-                        cursor_dt = datetime.fromisoformat(checkpoint_cursor)
-                        if dt <= cursor_dt:
-                            continue
-                    except Exception:
-                        pass
-                text_body = f"GitHub Commit [{c['sha']}] by {c['author']} on {self.target_repo}:\n{c['message']}"
-                records.append(ParsedRecord(text=text_body, author=c["author"], event_time=dt))
+            if len(payload) < PAGE_SIZE or (checkpoint and stop_when_older and page_has_older):
+                break
+        else:
+            log.warning("GitHub sync reached the %s-page safety limit for %s", MAX_PAGES, endpoint)
+        return records
 
-        return records, new_cursor
+    def fetch_records(self, checkpoint_cursor: str | None = None) -> tuple[list[ParsedRecord], str]:
+        """Fetch changed commits, pull requests and issues since the last sync."""
+        owner, repo = self.target_repo.split("/", 1)
+        checkpoint = _cursor_datetime(checkpoint_cursor)
+        since = checkpoint.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ") if checkpoint else None
+        root = f"https://api.github.com/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}"
+
+        def commit_record(item: dict[str, Any]) -> ParsedRecord | None:
+            commit = item.get("commit") or {}
+            author = commit.get("author") or {}
+            committer = commit.get("committer") or {}
+            stamp = author.get("date") or committer.get("date")
+            message = str(commit.get("message") or "").strip()
+            sha = str(item.get("sha") or "")
+            if not sha or not message:
+                return None
+            name = str(author.get("name") or "Unknown")
+            event_time = _parse_datetime(stamp)
+            body = f"GitHub commit {sha[:12]} by {name}:\n{message}"
+            return ParsedRecord(body, name, event_time, f"commit:{sha}")
+
+        def pull_record(item: dict[str, Any]) -> ParsedRecord | None:
+            number = item.get("number")
+            title = str(item.get("title") or "").strip()
+            if number is None or not title:
+                return None
+            user = item.get("user") or {}
+            author = str(user.get("login") or "Unknown")
+            event_time = _parse_datetime(item.get("updated_at") or item.get("created_at"))
+            body_text = str(item.get("body") or "").strip()
+            text = (
+                f"GitHub pull request #{number}: {title}\n"
+                f"State: {item.get('state', 'unknown')} | Author: {author} | Updated: {event_time.isoformat()}"
+            )
+            if body_text:
+                text += f"\nDescription:\n{body_text}"
+            return ParsedRecord(text, author, event_time, f"pull:{number}")
+
+        def issue_record(item: dict[str, Any]) -> ParsedRecord | None:
+            # The issues endpoint also returns PR-shaped issues; those are imported by /pulls.
+            if item.get("pull_request"):
+                return None
+            number = item.get("number")
+            title = str(item.get("title") or "").strip()
+            if number is None or not title:
+                return None
+            user = item.get("user") or {}
+            assignee = item.get("assignee") or {}
+            author = str(user.get("login") or "Unknown")
+            event_time = _parse_datetime(item.get("updated_at") or item.get("created_at"))
+            body_text = str(item.get("body") or "").strip()
+            text = (
+                f"GitHub issue #{number}: {title}\n"
+                f"State: {item.get('state', 'unknown')} | Author: {author} | "
+                f"Assignee: {assignee.get('login') or 'Unassigned'} | Updated: {event_time.isoformat()}"
+            )
+            if body_text:
+                text += f"\nDescription:\n{body_text}"
+            return ParsedRecord(text, author, event_time, f"issue:{number}")
+
+        commits_params = {"since": since} if since else {}
+        pull_params = {"state": "all", "sort": "updated", "direction": "desc"}
+        issue_params = {"state": "all", "sort": "updated", "direction": "desc"}
+        if since:
+            issue_params["since"] = since
+
+        records = []
+        records.extend(self._list_records(f"{root}/commits", commits_params, checkpoint, commit_record))
+        records.extend(self._list_records(f"{root}/pulls", pull_params, checkpoint, pull_record))
+        records.extend(self._list_records(f"{root}/issues", issue_params, checkpoint, issue_record))
+        return records, datetime.now(UTC).isoformat()
 
 
 class JiraConnector:
-    """Read-only Jira issue and sprint changelog connector."""
+    """Read-only Jira Cloud connector using the current enhanced JQL search endpoint."""
 
     def __init__(self, target_project: str):
         self.target_project = target_project.strip().upper()
         self.base_url = os.environ.get("JIRA_URL", "").rstrip("/")
-        self.token = os.environ.get("JIRA_API_TOKEN")
+        self.email = os.environ.get("JIRA_USER_EMAIL", "").strip()
+        self.token = os.environ.get("JIRA_API_TOKEN", "")
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]{1,19}", self.target_project):
+            raise ProviderSyncError("Jira project must be a valid project key, such as CAMPUS.")
+        if not self.base_url or not self.email or not self.token:
+            raise ProviderSyncError(
+                "Jira sync is not configured. Set JIRA_URL, JIRA_USER_EMAIL and JIRA_API_TOKEN on the API server."
+            )
+        parsed = urllib.parse.urlsplit(self.base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ProviderSyncError("JIRA_URL must be an absolute HTTP(S) URL.")
+
+    def _search_page(self, jql: str, page_token: str | None) -> dict[str, Any]:
+        credentials = base64.b64encode(f"{self.email}:{self.token}".encode("utf-8")).decode("ascii")
+        headers = {
+            "Authorization": f"Basic {credentials}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Baton-Ingestion/1.0",
+        }
+        payload: dict[str, Any] = {
+            "jql": jql,
+            "maxResults": PAGE_SIZE,
+            "fields": ["summary", "description", "assignee", "status", "updated"],
+        }
+        if page_token:
+            payload["nextPageToken"] = page_token
+        request = urllib.request.Request(
+            f"{self.base_url}/rest/api/3/search/jql",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        response = _load_json(request)
+        if not isinstance(response, dict):
+            raise ProviderSyncError("Jira returned an unexpected search response.")
+        return response
 
     def fetch_records(self, checkpoint_cursor: str | None = None) -> tuple[list[ParsedRecord], str]:
-        """Fetch Jira issues and resolution events since checkpoint_cursor."""
+        """Fetch changed Jira issues using enhanced JQL search and nextPageToken pagination."""
+        conditions = [f'project = "{self.target_project}"']
+        checkpoint = _cursor_datetime(checkpoint_cursor)
+        if checkpoint:
+            updated_after = checkpoint.astimezone(UTC).strftime("%Y-%m-%d %H:%M")
+            conditions.append(f"updated >= '{updated_after}'")
+        # JQL clauses must appear before ORDER BY.
+        jql = " AND ".join(conditions) + " ORDER BY updated ASC"
+
         records: list[ParsedRecord] = []
-        new_cursor = datetime.now(UTC).isoformat()
+        page_token: str | None = None
+        for page_number in range(MAX_PAGES):
+            response = self._search_page(jql, page_token)
+            issues = response.get("issues", [])
+            if not isinstance(issues, list):
+                raise ProviderSyncError("Jira returned an invalid issue list.")
 
-        # 1. Attempt live Jira REST API if configured
-        if self.base_url and self.token:
-            jql = f"project = {self.target_project} ORDER BY updated DESC"
-            if checkpoint_cursor:
-                # Jira JQL updated format: 'YYYY-MM-DD HH:mm'
-                try:
-                    dt = datetime.fromisoformat(checkpoint_cursor)
-                    jql += f" AND updated >= '{dt.strftime('%Y-%m-%d %H:%M')}'"
-                except Exception:
-                    pass
-            url = f"{self.base_url}/rest/api/3/search?jql={urllib.parse.quote(jql)}&maxResults=15"
-            headers = {
-                "Authorization": f"Bearer {self.token}",
-                "Accept": "application/json",
-            }
-            try:
-                req = urllib.request.Request(url, headers=headers)
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    if resp.status == 200:
-                        data = json.loads(resp.read().decode())
-                        for issue in data.get("issues", []):
-                            fields = issue.get("fields", {})
-                            summary = fields.get("summary", "")
-                            assignee = (fields.get("assignee") or {}).get("displayName") or "Unassigned"
-                            status = (fields.get("status") or {}).get("name") or "Open"
-                            updated = fields.get("updated") or datetime.now(UTC).isoformat()
-                            dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
-                            key = issue.get("key", "")
-                            text_body = f"Jira Issue [{key}]: {summary}\nStatus: {status} | Assignee: {assignee} | Updated: {updated}"
-                            records.append(ParsedRecord(text=text_body, author=assignee, event_time=dt))
-            except Exception as exc:
-                log.info("Live Jira fetch fell back to synthetic project provider (%s)", exc)
+            for issue in issues:
+                fields = issue.get("fields") or {}
+                key = str(issue.get("key") or "").strip()
+                summary = str(fields.get("summary") or "").strip()
+                if not key or not summary:
+                    continue
+                assignee = fields.get("assignee") or {}
+                status = fields.get("status") or {}
+                author = str(assignee.get("displayName") or "Unassigned")
+                event_time = _parse_datetime(fields.get("updated"))
+                description = _adf_to_text(fields.get("description"))
+                text = (
+                    f"Jira issue {key}: {summary}\n"
+                    f"Status: {status.get('name') or 'Unknown'} | Assignee: {author} | "
+                    f"Updated: {event_time.isoformat()}"
+                )
+                if description:
+                    text += f"\nDescription:\n{description}"
+                records.append(ParsedRecord(text, author, event_time, f"jira:{key}"))
 
-        # 2. Bounded synthetic tickets for offline/demo verification
-        if not records:
-            synthetic_tickets = [
-                {
-                    "key": f"{self.target_project}-101",
-                    "summary": "Transfer payment provider billing account to Rohan",
-                    "assignee": "Rohan Mehra",
-                    "status": "In Progress",
-                    "time": "2026-11-14T11:00:00+00:00",
-                },
-                {
-                    "key": f"{self.target_project}-102",
-                    "summary": "Migrate staging server from free tier before 30 Nov",
-                    "assignee": "Aarav Sharma",
-                    "status": "Blocked",
-                    "time": "2026-11-15T15:20:00+00:00",
-                },
-                {
-                    "key": f"{self.target_project}-103",
-                    "summary": "Handoff Campus Event Portal access credentials and documentation",
-                    "assignee": "Meera Patel",
-                    "status": "Done",
-                    "time": "2026-11-16T12:00:00+00:00",
-                },
-            ]
-            for t in synthetic_tickets:
-                dt = datetime.fromisoformat(t["time"])
-                if checkpoint_cursor:
-                    try:
-                        cursor_dt = datetime.fromisoformat(checkpoint_cursor)
-                        if dt <= cursor_dt:
-                            continue
-                    except Exception:
-                        pass
-                text_body = f"Jira [{t['key']}]: {t['summary']}\nAssignee: {t['assignee']} | Status: {t['status']}"
-                records.append(ParsedRecord(text=text_body, author=t["assignee"], event_time=dt))
+            next_token = response.get("nextPageToken")
+            if response.get("isLast") is True or not next_token:
+                page_token = None
+                break
+            page_token = str(next_token)
+        else:
+            raise ProviderSyncError(
+                "Jira returned more than the per-sync page limit. Narrow the update window and sync again."
+            )
 
-        return records, new_cursor
+        return records, datetime.now(UTC).isoformat()
