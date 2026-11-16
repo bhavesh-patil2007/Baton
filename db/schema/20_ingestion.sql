@@ -32,3 +32,22 @@ create table if not exists source_chunks (
 create index if not exists idx_chunks_project_acl on source_chunks (project_id, acl_label);
 create index if not exists idx_chunks_source on source_chunks (source_id);
 create index if not exists idx_chunks_event_time on source_chunks (project_id, event_time);
+
+create table if not exists source_connections (
+  id text primary key,
+  project_id text not null references projects(id),
+  provider text not null check (provider in ('github', 'jira')),
+  target_name text not null,
+  acl_label text not null check (acl_label in ('L1', 'L2', 'L3')),
+  status text not null check (status in ('connected', 'syncing', 'succeeded', 'partial', 'failed')),
+  last_synced_at text,
+  checkpoint_cursor text,
+  records_added integer not null default 0,
+  records_updated integer not null default 0,
+  records_skipped integer not null default 0,
+  error_message text,
+  created_at text not null,
+  updated_at text not null
+);
+
+create index if not exists idx_connections_project on source_connections (project_id);

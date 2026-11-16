@@ -408,3 +408,152 @@ def list_chunks(session: Session, project_id: str) -> list[dict[str, Any]]:
     demo_chunks = _demo_sample_chunks(project_id) + _demo_fixture_chunks(project_id)
     output.extend(chunk for chunk in demo_chunks if chunk.get("chunk_id") not in known_ids)
     return output
+
+
+def list_connections(session: Session, project_id: str) -> list[dict[str, Any]]:
+    rows = session.execute(
+        text("""
+            select id, project_id, provider, target_name, acl_label, status,
+                   last_synced_at, checkpoint_cursor, records_added, records_updated,
+                   records_skipped, error_message, created_at, updated_at
+            from source_connections where project_id = :p order by created_at desc
+        """),
+        {"p": project_id},
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def get_connection(session: Session, project_id: str, connection_id: str) -> dict[str, Any] | None:
+    row = session.execute(
+        text("""
+            select id, project_id, provider, target_name, acl_label, status,
+                   last_synced_at, checkpoint_cursor, records_added, records_updated,
+                   records_skipped, error_message, created_at, updated_at
+            from source_connections where id = :id and project_id = :p
+        """),
+        {"id": connection_id, "p": project_id},
+    ).mappings().first()
+    return dict(row) if row else None
+
+
+def create_connection(
+    session: Session, project_id: str, provider: str, target_name: str, acl_label: str
+) -> dict[str, Any]:
+    conn_id = f"conn-{uuid.uuid4().hex[:10]}"
+    now = datetime.now(UTC).isoformat()
+    session.execute(
+        text("""
+            insert into source_connections
+            (id, project_id, provider, target_name, acl_label, status, last_synced_at,
+             checkpoint_cursor, records_added, records_updated, records_skipped,
+             error_message, created_at, updated_at)
+            values (:id, :p, :prov, :target, :acl, 'connected', null, null, 0, 0, 0, null, :now, :now)
+        """),
+        {
+            "id": conn_id,
+            "p": project_id,
+            "prov": provider,
+            "target": target_name,
+            "acl": acl_label,
+            "now": now,
+        },
+    )
+    session.commit()
+    return get_connection(session, project_id, conn_id)  # type: ignore
+
+
+def delete_connection(session: Session, project_id: str, connection_id: str) -> bool:
+    res = session.execute(
+        text("delete from source_connections where id = :id and project_id = :p"),
+        {"id": connection_id, "p": project_id},
+    )
+    session.commit()
+    return res.rowcount > 0
+
+
+def sync_connection(session: Session, project_id: str, connection_id: str) -> dict[str, Any]:
+    conn = get_connection(session, project_id, connection_id)
+    if not conn:
+        raise ValueError("Source connection not found.")
+
+    from app.modules.ingestion.connectors import GitHubConnector, JiraConnector
+
+    provider = conn["provider"]
+    target = conn["target_name"]
+    cursor = conn.get("checkpoint_cursor")
+    acl_label = conn["acl_label"]
+
+    now = datetime.now(UTC).isoformat()
+    session.execute(
+        text("update source_connections set status = 'syncing', updated_at = :now where id = :id"),
+        {"id": connection_id, "now": now},
+    )
+    session.commit()
+
+    try:
+        if provider == "github":
+            connector = GitHubConnector(target)
+            source_type = "git"
+            source_title = f"GitHub: {target}"
+        elif provider == "jira":
+            connector = JiraConnector(target)
+            source_type = "task_csv"
+            source_title = f"Jira: {target}"
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
+
+        records, new_cursor = connector.fetch_records(checkpoint_cursor=cursor)
+
+        added = 0
+        skipped = 0
+        if records:
+            persist_source(
+                session,
+                project_id=project_id,
+                filename=source_title,
+                source_type=source_type,
+                acl_label=acl_label,
+                records=records,
+            )
+            added = len(records)
+        else:
+            skipped = 1
+
+        session.execute(
+            text("""
+                update source_connections
+                set status = 'succeeded',
+                    last_synced_at = :now,
+                    checkpoint_cursor = :cursor,
+                    records_added = records_added + :added,
+                    records_skipped = records_skipped + :skipped,
+                    error_message = null,
+                    updated_at = :now
+                where id = :id
+            """),
+            {
+                "id": connection_id,
+                "now": now,
+                "cursor": new_cursor,
+                "added": added,
+                "skipped": skipped,
+            },
+        )
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        err_msg = str(exc) or "Provider sync failed."
+        session.execute(
+            text("""
+                update source_connections
+                set status = 'failed',
+                    error_message = :err,
+                    updated_at = :now
+                where id = :id
+            """),
+            {"id": connection_id, "err": err_msg, "now": datetime.now(UTC).isoformat()},
+        )
+        session.commit()
+
+    return get_connection(session, project_id, connection_id)  # type: ignore
+

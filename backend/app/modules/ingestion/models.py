@@ -50,3 +50,33 @@ class SourceCreateMetadata(BaseModel):
         if value is not True:
             raise ValueError("You must confirm that you are authorised to connect this source.")
         return value
+
+
+class SourceConnectionCreate(BaseModel):
+    provider: Literal["github", "jira"]
+    target_name: str
+    acl_label: ACLLabel = "L1"
+
+    @field_validator("acl_label")
+    @classmethod
+    def validate_acl(cls, value: str) -> str:
+        if value == "L4":
+            raise ValueError("L4 secret sources are never accepted or stored.")
+        return value
+
+
+class SourceConnectionOut(BaseModel):
+    id: str
+    project_id: str
+    provider: Literal["github", "jira"]
+    target_name: str
+    acl_label: ACLLabel
+    status: Literal["connected", "syncing", "succeeded", "partial", "failed"]
+    last_synced_at: str | None = None
+    records_added: int = 0
+    records_updated: int = 0
+    records_skipped: int = 0
+    error_message: str | None = None
+    created_at: str
+    updated_at: str
+

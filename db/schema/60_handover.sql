@@ -37,3 +37,19 @@ create table if not exists plan_items (
 );
 
 create index if not exists idx_plan_items_version_role on plan_items (version_id, role);
+
+create table if not exists plan_action_status (
+  id text primary key,
+  version_id text not null,
+  project_id text not null,
+  claim_id text not null,
+  status text not null check (status in ('not_started', 'in_progress', 'blocked', 'completed')),
+  owner text,
+  due_date text,
+  notes text,
+  updated_by text not null,
+  updated_at text not null,
+  unique (version_id, claim_id)
+);
+
+create index if not exists idx_plan_action_status_version on plan_action_status (version_id, claim_id);

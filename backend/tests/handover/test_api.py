@@ -125,3 +125,44 @@ def test_every_view_is_audited_and_reset_restores_the_demo(client):
     sections = client.get("/handover/v1/view", headers=headers).json()["sections"]
     assert all(s["acknowledged_at"] is None for s in sections)
     json.dumps(sections)
+
+
+def test_action_status_lifecycle(client):
+    headers = login(client, "incoming_maintainer")
+    # 1. Fetch initial plan - all items start as 'not_started'
+    plan_resp = client.get("/handover/v1/plan", headers=headers)
+    assert plan_resp.status_code == 200
+    plan_data = plan_resp.json()["plan"]
+    d1_items = plan_data.get("day_1", [])
+    assert len(d1_items) > 0
+    target_claim_id = d1_items[0]["claim_id"]
+    assert d1_items[0]["action_status"] == "not_started"
+
+    # 2. Update status to 'in_progress' with a note
+    update_body = {
+        "version_id": "v1",
+        "claim_id": target_claim_id,
+        "status": "in_progress",
+        "notes": "Currently verifying dependencies",
+    }
+    up_resp = client.post("/handover/action-status", json=update_body, headers=headers)
+    assert up_resp.status_code == 200
+    assert up_resp.json()["status"] == "in_progress"
+    assert up_resp.json()["notes"] == "Currently verifying dependencies"
+
+    # 3. Verify status persisted in plan response
+    plan_after = client.get("/handover/v1/plan", headers=headers).json()["plan"]
+    updated_item = next(it for it in plan_after["day_1"] if it["claim_id"] == target_claim_id)
+    assert updated_item["action_status"] == "in_progress"
+    assert updated_item["action_notes"] == "Currently verifying dependencies"
+
+    # 4. Update status to 'completed'
+    client.post("/handover/action-status", json={
+        "version_id": "v1",
+        "claim_id": target_claim_id,
+        "status": "completed",
+        "notes": "Done",
+    }, headers=headers)
+    plan_completed = client.get("/handover/v1/plan", headers=headers).json()["plan"]
+    comp_item = next(it for it in plan_completed["day_1"] if it["claim_id"] == target_claim_id)
+    assert comp_item["action_status"] == "completed"

@@ -19,9 +19,13 @@ import {
   ApiError,
 } from "../api/client";
 import { DashboardLayoutDark } from "../components/layout/DashboardLayoutDark";
-import { ThreeHeroNode, FallbackHero } from "../components/hero/ThreeHeroNode";
+import { FallbackHero } from "../components/hero/FallbackHero";
 import { DocumentUploader } from "../components/upload/DocumentUploader";
 import { CloudUpload, X, Plus, RotateCcw, Download, ShieldCheck } from "lucide-react";
+
+const ThreeHeroNode = React.lazy(() =>
+  import("../components/hero/ThreeHeroNode").then(({ ThreeHeroNode }) => ({ default: ThreeHeroNode })),
+);
 
 export const DashboardDark: React.FC<{ withLayout?: boolean }> = ({ withLayout = false }) => {
   const { user } = useAuth();
