@@ -556,4 +556,3 @@ def sync_connection(session: Session, project_id: str, connection_id: str) -> di
         session.commit()
 
     return get_connection(session, project_id, connection_id)  # type: ignore
-

@@ -18,6 +18,17 @@ interface Source {
   created_at?: string | null;
 }
 
+interface DriftAlert {
+  alert_id: string;
+  title: string;
+  source_type: string;
+  acl_label: string;
+  previous_chunks: number;
+  current_chunks: number;
+  status: "open" | "resolved";
+  detected_at: string;
+}
+
 interface SourceConnection {
   id: string;
   project_id: string;
@@ -70,6 +81,14 @@ export function SourcesPage() {
   const [consent, setConsent] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [captureTitle, setCaptureTitle] = useState("");
+  const [captureBody, setCaptureBody] = useState("");
+  const [captureAcl, setCaptureAcl] = useState("L1");
+  const [captureConsent, setCaptureConsent] = useState(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
+  const [captureSaved, setCaptureSaved] = useState(false);
+  const [savingCapture, setSavingCapture] = useState(false);
+  const [driftActionError, setDriftActionError] = useState<string | null>(null);
 
   // Live Sync Connect Modal states
   const [isConnectOpen, setIsConnectOpen] = useState(false);
@@ -79,10 +98,17 @@ export function SourcesPage() {
   const [connectConsent, setConnectConsent] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [activeSyncId, setActiveSyncId] = useState<string | null>(null);
-
   const { data, error, isLoading, refetch } = useQuery({
     queryKey: ["sources", user?.id],
     queryFn: () => api<Source[]>("/sources"),
+  });
+  const { data: driftAlerts = [], error: driftError, isLoading: driftLoading, refetch: refetchDrift } = useQuery({
+    queryKey: ["drift-alerts", user?.id],
+    queryFn: async () => {
+      if (user?.role === "approver") await api<{ baselined: number; changed: number }>("/drift/scan", { method: "POST" });
+      return api<DriftAlert[]>("/drift/alerts");
+    },
+    enabled: Boolean(user),
   });
 
   const connectionsQuery = useQuery({
@@ -141,10 +167,44 @@ export function SourcesPage() {
       setConsent(false);
       formElement.reset();
       await queryClient.invalidateQueries({ queryKey: ["sources"] });
+      await queryClient.invalidateQueries({ queryKey: ["drift-alerts"] });
     } catch (cause) {
       setUploadError(cause instanceof Error ? cause.message : "Source upload failed.");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleCapture(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingCapture(true);
+    setCaptureError(null);
+    setCaptureSaved(false);
+    try {
+      await api<Source>("/capture", {
+        method: "POST",
+        body: { title: captureTitle, body: captureBody, acl_label: captureAcl, consent: captureConsent },
+      });
+      setCaptureTitle("");
+      setCaptureBody("");
+      setCaptureConsent(false);
+      setCaptureSaved(true);
+      await queryClient.invalidateQueries({ queryKey: ["sources"] });
+      await queryClient.invalidateQueries({ queryKey: ["drift-alerts"] });
+    } catch (cause) {
+      setCaptureError(cause instanceof Error ? cause.message : "Could not save this note.");
+    } finally {
+      setSavingCapture(false);
+    }
+  }
+
+  async function handleResolveAlert(alertId: string) {
+    setDriftActionError(null);
+    try {
+      await api<void>(`/drift/alerts/${encodeURIComponent(alertId)}/resolve`, { method: "POST", body: {} });
+      await refetchDrift();
+    } catch (cause) {
+      setDriftActionError(cause instanceof Error ? cause.message : "Could not resolve this alert.");
     }
   }
 
@@ -480,6 +540,56 @@ export function SourcesPage() {
         </div>
       )}
 
+      {user?.role === "approver" && (
+        <form onSubmit={handleCapture} className="space-y-4 rounded-2xl border border-purple-200 dark:border-purple-500/20 bg-purple-50/50 dark:bg-purple-950/10 p-6 shadow-sm">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Capture a decision or handover note</h2>
+            <p className="mt-1 text-xs text-slate-600 dark:text-gray-400">Notes are redacted, split into evidence chunks, and included in Baton’s normal source and verification workflow.</p>
+          </div>
+          <div>
+            <label htmlFor="capture-title" className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300">Title</label>
+            <input id="capture-title" value={captureTitle} onChange={(event) => setCaptureTitle(event.target.value)} minLength={3} maxLength={120} required className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-black/40 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white" placeholder="e.g. Retry worker decision" />
+          </div>
+          <div>
+            <label htmlFor="capture-body" className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300">What should the next team know?</label>
+            <textarea id="capture-body" value={captureBody} onChange={(event) => setCaptureBody(event.target.value)} minLength={10} maxLength={8000} required rows={5} className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-black/40 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white" placeholder="Record the decision, owner, reason, or next action…" />
+          </div>
+          <div className="flex flex-wrap items-end gap-4">
+            <label className="text-xs font-bold text-slate-700 dark:text-gray-300">Visibility
+              <select value={captureAcl} onChange={(event) => setCaptureAcl(event.target.value)} className="mt-1 block rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-black/40 px-3 py-2 text-xs font-medium text-slate-900 dark:text-white">
+                <option value="L1">L1 — Team-wide</option><option value="L2">L2 — Maintainers</option><option value="L3">L3 — Leadership-only</option>
+              </select>
+            </label>
+            <label className="flex items-start gap-2 text-xs text-slate-700 dark:text-gray-300">
+              <input type="checkbox" checked={captureConsent} onChange={(event) => setCaptureConsent(event.target.checked)} className="mt-0.5" />
+              <span>I’m authorised to capture and process this project information.</span>
+            </label>
+            <Button type="submit" disabled={!captureConsent || savingCapture} className="px-5 py-2.5 font-bold">{savingCapture ? "Saving…" : "Save note"}</Button>
+          </div>
+          {captureError && <p role="alert" className="text-xs font-semibold text-rose-600">{captureError}</p>}
+          {captureSaved && <p role="status" className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Note captured and added to Connected Sources.</p>}
+        </form>
+      )}
+
+      <section className="space-y-3 rounded-2xl border border-amber-200 dark:border-amber-500/20 bg-amber-50/50 dark:bg-amber-950/10 p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div><h2 className="text-lg font-bold text-gray-900 dark:text-white">Source change alerts</h2><p className="text-xs text-slate-600 dark:text-gray-400">Re-import a source with the same name to compare its redacted evidence with the last scan.</p></div>
+          <Button variant="quiet" onClick={() => void refetchDrift()}>Check changes</Button>
+        </div>
+        {driftLoading ? <p role="status" className="text-xs text-slate-600 dark:text-gray-400">Checking the latest source versions…</p> : null}
+        {driftError && <p role="alert" className="text-xs font-semibold text-rose-600 dark:text-rose-300">Could not check source changes: {(driftError as Error).message}</p>}
+        {driftActionError && <p role="alert" className="text-xs font-semibold text-rose-600 dark:text-rose-300">{driftActionError}</p>}
+        {!driftLoading && !driftError && driftAlerts.length === 0 ? <p className="text-xs text-slate-600 dark:text-gray-400">No detected source changes.</p> : null}
+        {!driftError && driftAlerts.length > 0 ? (
+          <ul className="space-y-2">
+            {driftAlerts.map((alert) => <li key={alert.alert_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 dark:border-amber-500/20 bg-white/80 dark:bg-black/20 p-3 text-xs">
+              <span className="text-slate-800 dark:text-gray-200"><strong>{alert.title}</strong> changed · {alert.previous_chunks} → {alert.current_chunks} chunks · {alert.acl_label}</span>
+              {user?.role === "approver" && <Button variant="quiet" onClick={() => void handleResolveAlert(alert.alert_id)}>Resolve</Button>}
+            </li>)}
+          </ul>
+        ) : null}
+      </section>
+
       {/* Connected Sources Table */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -534,4 +644,3 @@ export function SourcesPage() {
     </section>
   );
 }
-

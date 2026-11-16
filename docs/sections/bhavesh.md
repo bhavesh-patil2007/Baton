@@ -12,6 +12,8 @@ Owned modules: ingestion (F1/F2), risk (F6), Sources and Risk frontend features,
 - Risk uses the ingestion `public.py` contract (never ingestion internals), so ACL filtering happens before any timeline, concentration or task-chain calculation.
 - Deterministic timeline, explainable ownership-concentration signals and blocked/overdue task chains, including evidence chunk identifiers. Typed graph relationships cover authorship, PR reviews, imports, task ownership and blocking.
 - Sources and Risk pages with upload consent/access controls, loading/error/empty states, signal explanations and evidence references.
+- Approver-only quick capture for titled decisions and handover notes. Captured text is consented, redacted, chunked, hashed, access-labelled and stored through the same source pipeline as uploaded documents.
+- Approver-triggered source-version scans. Re-importing a source with the same title and type creates a persistent change alert; the visible source metadata is filtered by ACL, and approvers can resolve alerts.
 - Round 3 Live Source Syncing (GitHub & Jira): Server-side authorized connectors, bounded incremental imports with cursor checkpointing, deduplication against existing source chunks, and live connection management in `/sources`.
 - Deterministic Evidence Verification Confidence Grades: Assigns Strong, Partial, or Weak grades based on verbatim citation match quality, provenance, and contradiction detection.
 - Trackable Handover Action Plans: Interactive task progress tracking (`not_started`, `in_progress`, `blocked`, `completed`), notes, and dependency resolution.
@@ -19,7 +21,7 @@ Owned modules: ingestion (F1/F2), risk (F6), Sources and Risk frontend features,
 ## Deliberate scope boundaries
 
 - No edits to frozen contracts, `backend/app/core`, app entrypoint, shared frontend shell or dependency manifests.
-- No raw OAuth connector or live GitHub fetch; Git is consumed from an authorised export.
+- No raw OAuth connector or live GitHub fetch; Git is consumed from an authorised export. Change alerts compare re-imported files and do not poll upstream services.
 - No arbitrary LLM risk score; risk flags expose their input signals.
 - No L4 data is persisted or rendered.
 
