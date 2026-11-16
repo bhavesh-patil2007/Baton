@@ -154,4 +154,3 @@ def reset_demo(session: Session) -> None:
     session.commit()
     from .deps import _singleton_claims
     _singleton_claims._local_overrides.clear()
-

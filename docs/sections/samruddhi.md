@@ -49,8 +49,16 @@ All code changes are strictly confined to Samruddhi's designated ownership bound
 - `backend/app/modules/review/`
 - `backend/tests/review/`
 - `db/schema/50_review.sql`
+- `db/schema/70_drift.sql`
 - `frontend/src/features/review/`
 - `tests/e2e/`
 - `docs/sections/samruddhi.md`
 
 No modifications were made to frozen contracts, `backend/app/core/`, `backend/app/main.py`, `frontend/src/app/`, or teammate module files.
+
+## Round 3 — source change alerts
+
+- `POST /drift/scan` records the first visible version as a baseline, then compares the newest re-import of each same-name, same-type source using SHA-256 hashes from redacted evidence chunks.
+- A changed version creates a persistent alert with old/new chunk counts. It does not return old or new source contents. Alert ACL is at least as restrictive as either version.
+- `GET /drift/alerts` returns only alerts the current role may read. The Approver can resolve an alert; cross-project IDs and non-Approver scan/resolve attempts are rejected.
+- The UI scans on the Sources page and after upload/capture, and offers a manual recheck. This is re-import based; it does not poll third-party source systems.

@@ -106,4 +106,3 @@ class SourceConnectionOut(BaseModel):
     error_message: str | None = None
     created_at: str
     updated_at: str
-

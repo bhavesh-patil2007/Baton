@@ -103,4 +103,3 @@ def delete_connection(
     if not success:
         raise HTTPException(status_code=404, detail="Source connection not found.")
     return {"status": "deleted", "id": connection_id}
-

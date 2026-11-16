@@ -106,4 +106,3 @@ def reset_demo(session: Session) -> None:
     session.execute(text("delete from gaps where project_id = 'proj-campus-event-portal'"))
     session.execute(text("delete from claims where project_id = 'proj-campus-event-portal'"))
     session.commit()
-
