@@ -3,6 +3,8 @@ import json
 import os
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+
+from app.core import acl
 from sqlalchemy.orm import Session
 
 from app.core.auth import User, current_user
@@ -60,7 +62,8 @@ def chunk(chunk_id: str, user: User = Depends(current_user), session: Session = 
 
 @router.get("/sources/connections", response_model=list[SourceConnectionOut])
 def get_connections(user: User = Depends(current_user), session: Session = Depends(get_session)):
-    return public.list_connections(user.project_id, session)
+    connections = public.list_connections(user.project_id, session)
+    return [connection for connection in connections if acl.can_read(user.role, connection.get("acl_label"))]
 
 
 @router.post("/sources/connections", status_code=201, response_model=SourceConnectionOut)

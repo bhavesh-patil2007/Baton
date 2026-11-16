@@ -43,6 +43,7 @@ class ParsedRecord:
     text: str
     author: str = "Unknown"
     event_time: datetime = datetime(1970, 1, 1, tzinfo=UTC)
+    external_id: str | None = None
 
 
 def redact_text(value: str) -> str:
@@ -463,12 +464,162 @@ def create_connection(
 
 
 def delete_connection(session: Session, project_id: str, connection_id: str) -> bool:
+    # Keep already-ingested evidence immutable, but remove the connector's current-version index.
+    session.execute(
+        text("delete from source_sync_records where connection_id = :id and project_id = :p"),
+        {"id": connection_id, "p": project_id},
+    )
     res = session.execute(
         text("delete from source_connections where id = :id and project_id = :p"),
         {"id": connection_id, "p": project_id},
     )
     session.commit()
     return res.rowcount > 0
+
+
+def persist_provider_records(
+    session: Session,
+    *,
+    project_id: str,
+    connection_id: str,
+    provider: str,
+    target_name: str,
+    source_type: str,
+    acl_label: str,
+    records: list[ParsedRecord],
+) -> tuple[int, int, int]:
+    """Persist provider records as immutable versions and deduplicate by provider identity.
+
+    A changed provider item creates a new source/chunk snapshot; the sync index points
+    to the latest snapshot. Previous evidence remains available for audit and citations.
+    Returns (added, updated, skipped).
+    """
+    added = updated = skipped = 0
+    source_prefix = f"{provider.title()}: {target_name}"
+
+    for record in records:
+        safe_text = redact_text(record.text).strip()
+        if not safe_text:
+            skipped += 1
+            continue
+
+        external_id = str(record.external_id or "").strip()
+        if not external_id:
+            external_id = "content:" + hashlib.sha256(safe_text.encode("utf-8")).hexdigest()
+        external_id = external_id[:255]
+        event_time = _parse_datetime(record.event_time)
+        author = (record.author or "Unknown").strip() or "Unknown"
+        fingerprint_payload = json.dumps(
+            [safe_text, author, event_time.isoformat(), source_type, acl_label],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        fingerprint = hashlib.sha256(fingerprint_payload.encode("utf-8")).hexdigest()
+
+        current = session.execute(
+            text(
+                "select source_id, content_fingerprint from source_sync_records "
+                "where connection_id = :connection_id and external_id = :external_id"
+            ),
+            {"connection_id": connection_id, "external_id": external_id},
+        ).mappings().first()
+        if current and current["content_fingerprint"] == fingerprint:
+            skipped += 1
+            continue
+
+        source_id = f"src-{uuid.uuid4().hex[:12]}"
+        source_title = f"{source_prefix} · {external_id}"
+        snapshot = ParsedRecord(safe_text, author, event_time, external_id)
+        chunks = chunk_record(
+            snapshot,
+            project_id=project_id,
+            source_id=source_id,
+            source_type=source_type,
+            source_title=source_title,
+            acl_label=acl_label,
+        )
+        if not chunks:
+            skipped += 1
+            continue
+
+        created_at = datetime.now(UTC).isoformat()
+        note = "New immutable provider snapshot; an earlier version is retained." if current else None
+        session.execute(
+            text(
+                "insert into sources "
+                "(id, project_id, title, type, acl_label, consent, status, chunks, note, created_at) "
+                "values (:id, :project_id, :title, :type, :acl_label, 1, 'parsed', :chunks, :note, :created_at)"
+            ),
+            {
+                "id": source_id,
+                "project_id": project_id,
+                "title": source_title,
+                "type": source_type,
+                "acl_label": acl_label,
+                "chunks": len(chunks),
+                "note": note,
+                "created_at": created_at,
+            },
+        )
+        for chunk in chunks:
+            session.execute(
+                text(
+                    "insert into source_chunks "
+                    "(id, project_id, source_id, source_type, source_title, author, event_time, acl_label, "
+                    "content_hash, char_start, char_end, content) "
+                    "values (:id, :project_id, :source_id, :source_type, :source_title, :author, :event_time, "
+                    ":acl_label, :content_hash, :char_start, :char_end, :content)"
+                ),
+                {
+                    "id": chunk["chunk_id"],
+                    "project_id": project_id,
+                    "source_id": source_id,
+                    "source_type": source_type,
+                    "source_title": source_title,
+                    "author": chunk["author"],
+                    "event_time": chunk["event_time"],
+                    "acl_label": acl_label,
+                    "content_hash": chunk["content_hash"],
+                    "char_start": chunk["char_span"][0],
+                    "char_end": chunk["char_span"][1],
+                    "content": chunk["text"],
+                },
+            )
+
+        if current:
+            session.execute(
+                text(
+                    "update source_sync_records set source_id = :source_id, "
+                    "content_fingerprint = :fingerprint "
+                    "where connection_id = :connection_id and external_id = :external_id"
+                ),
+                {
+                    "source_id": source_id,
+                    "fingerprint": fingerprint,
+                    "connection_id": connection_id,
+                    "external_id": external_id,
+                },
+            )
+            updated += 1
+        else:
+            session.execute(
+                text(
+                    "insert into source_sync_records "
+                    "(id, project_id, connection_id, external_id, source_id, content_fingerprint) "
+                    "values (:id, :project_id, :connection_id, :external_id, :source_id, :fingerprint)"
+                ),
+                {
+                    "id": uuid.uuid4().hex,
+                    "project_id": project_id,
+                    "connection_id": connection_id,
+                    "external_id": external_id,
+                    "source_id": source_id,
+                    "fingerprint": fingerprint,
+                },
+            )
+            added += 1
+
+    return added, updated, skipped
 
 
 def sync_connection(session: Session, project_id: str, connection_id: str) -> dict[str, Any]:
@@ -503,21 +654,16 @@ def sync_connection(session: Session, project_id: str, connection_id: str) -> di
             raise ValueError(f"Unsupported provider: {provider}")
 
         records, new_cursor = connector.fetch_records(checkpoint_cursor=cursor)
-
-        added = 0
-        skipped = 0
-        if records:
-            persist_source(
-                session,
-                project_id=project_id,
-                filename=source_title,
-                source_type=source_type,
-                acl_label=acl_label,
-                records=records,
-            )
-            added = len(records)
-        else:
-            skipped = 1
+        added, updated, skipped = persist_provider_records(
+            session,
+            project_id=project_id,
+            connection_id=connection_id,
+            provider=provider,
+            target_name=target,
+            source_type=source_type,
+            acl_label=acl_label,
+            records=records,
+        )
 
         session.execute(
             text("""
@@ -526,6 +672,7 @@ def sync_connection(session: Session, project_id: str, connection_id: str) -> di
                     last_synced_at = :now,
                     checkpoint_cursor = :cursor,
                     records_added = records_added + :added,
+                    records_updated = records_updated + :updated,
                     records_skipped = records_skipped + :skipped,
                     error_message = null,
                     updated_at = :now
@@ -536,6 +683,7 @@ def sync_connection(session: Session, project_id: str, connection_id: str) -> di
                 "now": now,
                 "cursor": new_cursor,
                 "added": added,
+                "updated": updated,
                 "skipped": skipped,
             },
         )
@@ -543,6 +691,11 @@ def sync_connection(session: Session, project_id: str, connection_id: str) -> di
     except Exception as exc:
         session.rollback()
         err_msg = str(exc) or "Provider sync failed."
+        for secret_name in ("GITHUB_SYNC_TOKEN", "GITHUB_TOKEN", "JIRA_API_TOKEN"):
+            secret = os.environ.get(secret_name)
+            if secret:
+                err_msg = err_msg.replace(secret, "[REDACTED]")
+        err_msg = err_msg[:300]
         session.execute(
             text("""
                 update source_connections

@@ -51,3 +51,17 @@ create table if not exists source_connections (
 );
 
 create index if not exists idx_connections_project on source_connections (project_id);
+
+
+-- Maps provider items to their latest immutable evidence snapshots for idempotent sync.
+create table if not exists source_sync_records (
+  id text primary key,
+  project_id text not null references projects(id),
+  connection_id text not null references source_connections(id),
+  external_id text not null,
+  source_id text not null references sources(id),
+  content_fingerprint text not null,
+  unique (connection_id, external_id)
+);
+
+create index if not exists idx_source_sync_records_project on source_sync_records (project_id);

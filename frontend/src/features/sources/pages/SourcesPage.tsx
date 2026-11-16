@@ -137,7 +137,7 @@ export function SourcesPage() {
   });
 
   const connectMutation = useMutation({
-    mutationFn: async (payload: { provider: "github" | "jira"; target_name: string; acl_label: string }) => {
+    mutationFn: async (payload: { provider: "github" | "jira"; target_name: string; acl_label: string; consent: boolean }) => {
       const conn = await api<SourceConnection>("/sources/connections", { method: "POST", body: payload });
       await api<SourceConnection>(`/sources/connections/${conn.id}/sync`, { method: "POST" });
       return conn;
@@ -215,6 +215,7 @@ export function SourcesPage() {
       provider: connectProvider,
       target_name: connectTarget.trim(),
       acl_label: connectAcl,
+      consent: connectConsent,
     });
   }
 
@@ -458,8 +459,14 @@ export function SourcesPage() {
                   onChange={(e) => setConnectConsent(e.target.checked)}
                   className="mt-0.5 rounded text-indigo-600"
                 />
-                <span>I confirm that I am authorised to connect and sync this project repository.</span>
+                <span>I confirm that I am authorised to connect and sync this GitHub repository or Jira project.</span>
               </label>
+
+              <p className="text-[11px] leading-relaxed text-slate-500 dark:text-gray-400">
+                Provider credentials stay on the API server. GitHub private repositories require GITHUB_SYNC_TOKEN.
+                Jira Cloud requires JIRA_URL, JIRA_USER_EMAIL and JIRA_API_TOKEN configured by the deployment owner.
+                Failed authentication is shown as a failed sync; Baton does not substitute sample records.
+              </p>
 
               {connectError && (
                 <p role="alert" className="text-rose-500 font-semibold">{connectError}</p>
