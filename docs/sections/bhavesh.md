@@ -12,6 +12,9 @@ Owned modules: ingestion (F1/F2), risk (F6), Sources and Risk frontend features,
 - Risk uses the ingestion `public.py` contract (never ingestion internals), so ACL filtering happens before any timeline, concentration or task-chain calculation.
 - Deterministic timeline, explainable ownership-concentration signals and blocked/overdue task chains, including evidence chunk identifiers. Typed graph relationships cover authorship, PR reviews, imports, task ownership and blocking.
 - Sources and Risk pages with upload consent/access controls, loading/error/empty states, signal explanations and evidence references.
+- Round 3 Live Source Syncing (GitHub & Jira): Server-side authorized connectors, bounded incremental imports with cursor checkpointing, deduplication against existing source chunks, and live connection management in `/sources`.
+- Deterministic Evidence Verification Confidence Grades: Assigns Strong, Partial, or Weak grades based on verbatim citation match quality, provenance, and contradiction detection.
+- Trackable Handover Action Plans: Interactive task progress tracking (`not_started`, `in_progress`, `blocked`, `completed`), notes, and dependency resolution.
 
 ## Deliberate scope boundaries
 

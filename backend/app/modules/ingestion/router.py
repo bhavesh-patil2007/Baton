@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import User, current_user
 from app.core.db import get_session
 from app.modules.ingestion import public, service
+from app.modules.ingestion.models import SourceConnectionCreate, SourceConnectionOut
 
 router = APIRouter(tags=["ingestion"])
 
@@ -55,3 +56,48 @@ def chunk(chunk_id: str, user: User = Depends(current_user), session: Session = 
     if found is None:
         raise HTTPException(status_code=404, detail="Chunk not found.")
     return found
+
+
+@router.get("/sources/connections", response_model=list[SourceConnectionOut])
+def get_connections(user: User = Depends(current_user), session: Session = Depends(get_session)):
+    return public.list_connections(user.project_id, session)
+
+
+@router.post("/sources/connections", status_code=201, response_model=SourceConnectionOut)
+def create_connection(
+    body: SourceConnectionCreate,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+):
+    if not service.can_manage_sources(user.role):
+        raise HTTPException(status_code=403, detail="Only the project approver can connect sources.")
+    return public.create_connection(user.project_id, body.provider, body.target_name, body.acl_label, session)
+
+
+@router.post("/sources/connections/{connection_id}/sync", response_model=SourceConnectionOut)
+def sync_connection(
+    connection_id: str,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+):
+    if not service.can_manage_sources(user.role):
+        raise HTTPException(status_code=403, detail="Only the project approver can sync sources.")
+    conn = service.get_connection(session, user.project_id, connection_id)
+    if not conn:
+        raise HTTPException(status_code=404, detail="Source connection not found.")
+    return public.sync_connection(user.project_id, connection_id, session)
+
+
+@router.delete("/sources/connections/{connection_id}")
+def delete_connection(
+    connection_id: str,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+):
+    if not service.can_manage_sources(user.role):
+        raise HTTPException(status_code=403, detail="Only the project approver can manage sources.")
+    success = public.delete_connection(user.project_id, connection_id, session)
+    if not success:
+        raise HTTPException(status_code=404, detail="Source connection not found.")
+    return {"status": "deleted", "id": connection_id}
+

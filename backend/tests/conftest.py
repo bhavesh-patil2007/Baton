@@ -5,7 +5,7 @@ import pytest
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
-    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setenv("JWT_SECRET", "test-secret-at-least-32-bytes-long-for-hmac-sha256")
     monkeypatch.setenv("ENV", "test")
     from fastapi.testclient import TestClient
 

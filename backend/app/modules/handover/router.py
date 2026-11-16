@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import User, current_user
 from app.core.db import get_session
 from app.modules.handover import service
-from app.modules.handover.models import AckRequest, OwnershipRequest
+from app.modules.handover.models import AckRequest, ActionStatusRequest, OwnershipRequest
 
 router = APIRouter(prefix="/handover", tags=["handover"])
 
@@ -29,3 +29,10 @@ def ack(body: AckRequest, user: User = Depends(current_user), session: Session =
 @router.post("/ownership")
 def ownership(body: OwnershipRequest, user: User = Depends(current_user), session: Session = Depends(get_session)):
     return service.respond_ownership(session, user, body.version_id, body.claim_id, body.response, body.note)
+
+
+@router.post("/action-status")
+def action_status(body: ActionStatusRequest, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    return service.update_action_status(
+        session, user, body.version_id, body.claim_id, body.status, body.owner, body.due_date, body.notes
+    )

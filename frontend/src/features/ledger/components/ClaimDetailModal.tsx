@@ -56,6 +56,28 @@ export function ClaimDetailModal({ claim, onClose, onOpenSource }: ClaimDetailMo
           </button>
         </div>
 
+        {claim.confidence_grade && (
+          <div className={`my-3 rounded-xl border p-3.5 text-xs ${
+            claim.confidence_grade === "Strong"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+              : claim.confidence_grade === "Partial"
+              ? "bg-amber-50 border-amber-200 text-amber-900"
+              : "bg-rose-50 border-rose-200 text-rose-900"
+          }`}>
+            <div className="flex items-center gap-2">
+              <span className="font-bold uppercase tracking-wider text-[11px]">Evidence Confidence:</span>
+              <span className="font-extrabold px-2 py-0.5 rounded-full text-[11px] bg-white border border-current">
+                {claim.confidence_grade}
+              </span>
+            </div>
+            {claim.confidence_reason && (
+              <p className="mt-1 text-slate-700 font-medium">
+                {claim.confidence_reason}
+              </p>
+            )}
+          </div>
+        )}
+
         {claim.state === "conflicting" && (
           <div className="my-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-900 shadow-xs">
             <strong className="text-rose-700 font-bold">≠ Conflict Detected:</strong> Contradictory statements exist for{" "}

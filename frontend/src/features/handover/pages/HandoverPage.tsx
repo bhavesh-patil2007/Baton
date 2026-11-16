@@ -5,7 +5,7 @@ import { useAuth } from "@/app/auth";
 import { useLatestVersion } from "@/features/review/public";
 import { SourceDrawer } from "@/features/sources/public";
 import { EmptyState, ErrorState, Loading } from "@/shared/ui";
-import { acknowledge, getPlan, getView, respondOwnership, type EvidenceView } from "../api";
+import { acknowledge, getPlan, getView, respondOwnership, updateActionStatus, type EvidenceView } from "../api";
 import { HiddenPlaceholder } from "../components/HiddenPlaceholder";
 import { PlanPanel } from "../components/PlanPanel";
 import { SectionBlock } from "../components/SectionBlock";
@@ -33,10 +33,16 @@ export function HandoverPage() {
     enabled: !!versionId && tab === "plan",
   });
   const refreshView = () => queryClient.invalidateQueries({ queryKey: ["handover", "view"] });
+  const refreshPlan = () => queryClient.invalidateQueries({ queryKey: ["handover", "plan"] });
   const ack = useMutation({ mutationFn: (section: string) => acknowledge(versionId as string, section), onSuccess: refreshView });
   const respond = useMutation({
     mutationFn: (v: { claimId: string; response: "accept" | "decline" }) => respondOwnership(versionId as string, v.claimId, v.response),
     onSuccess: refreshView,
+  });
+  const statusMutation = useMutation({
+    mutationFn: (v: { claimId: string; status: "not_started" | "in_progress" | "blocked" | "completed" }) =>
+      updateActionStatus(versionId as string, v.claimId, v.status),
+    onSuccess: refreshPlan,
   });
 
   if (versionLoading) return <Loading label="Finding the approved handover" />;
@@ -134,7 +140,11 @@ export function HandoverPage() {
           {plan.error && <ErrorState title="Could not build the plan" detail={(plan.error as Error).message} onRetry={() => void plan.refetch()} />}
           {plan.data && (
             <>
-              <PlanPanel plan={plan.data.plan} onOpenCitation={setCitation} />
+              <PlanPanel
+                plan={plan.data.plan}
+                onOpenCitation={setCitation}
+                onUpdateStatus={(claimId, status) => statusMutation.mutate({ claimId, status })}
+              />
               <p className="mt-6 text-xs text-gray-400 font-mono">{plan.data.note}</p>
             </>
           )}
