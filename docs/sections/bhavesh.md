@@ -14,6 +14,9 @@ Owned modules: ingestion (F1/F2), risk (F6), Sources and Risk frontend features,
 - Sources and Risk pages with upload consent/access controls, loading/error/empty states, signal explanations and evidence references.
 - Approver-only quick capture for titled decisions and handover notes. Captured text is consented, redacted, chunked, hashed, access-labelled and stored through the same source pipeline as uploaded documents.
 - Approver-triggered source-version scans. Re-importing a source with the same title and type creates a persistent change alert; the visible source metadata is filtered by ACL, and approvers can resolve alerts.
+- Round 3 Live Source Syncing (GitHub & Jira): Server-side authorized connectors, bounded incremental imports with cursor checkpointing, deduplication against existing source chunks, and live connection management in `/sources`.
+- Deterministic Evidence Verification Confidence Grades: Assigns Strong, Partial, or Weak grades based on verbatim citation match quality, provenance, and contradiction detection.
+- Trackable Handover Action Plans: Interactive task progress tracking (`not_started`, `in_progress`, `blocked`, `completed`), notes, and dependency resolution.
 
 ## Deliberate scope boundaries
 

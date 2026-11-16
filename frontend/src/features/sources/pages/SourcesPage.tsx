@@ -29,6 +29,22 @@ interface DriftAlert {
   detected_at: string;
 }
 
+interface SourceConnection {
+  id: string;
+  project_id: string;
+  provider: "github" | "jira";
+  target_name: string;
+  acl_label: string;
+  status: "connected" | "syncing" | "succeeded" | "partial" | "failed";
+  last_synced_at?: string | null;
+  records_added: number;
+  records_updated: number;
+  records_skipped: number;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const ACCEPTED = ".md,.txt,.pdf,.docx,.json,.csv";
 
 async function uploadSource(file: File, consent: boolean, aclLabel: string): Promise<Source> {
@@ -73,6 +89,15 @@ export function SourcesPage() {
   const [captureSaved, setCaptureSaved] = useState(false);
   const [savingCapture, setSavingCapture] = useState(false);
   const [driftActionError, setDriftActionError] = useState<string | null>(null);
+
+  // Live Sync Connect Modal states
+  const [isConnectOpen, setIsConnectOpen] = useState(false);
+  const [connectProvider, setConnectProvider] = useState<"github" | "jira">("github");
+  const [connectTarget, setConnectTarget] = useState("");
+  const [connectAcl, setConnectAcl] = useState("L1");
+  const [connectConsent, setConnectConsent] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [activeSyncId, setActiveSyncId] = useState<string | null>(null);
   const { data, error, isLoading, refetch } = useQuery({
     queryKey: ["sources", user?.id],
     queryFn: () => api<Source[]>("/sources"),
@@ -182,6 +207,19 @@ export function SourcesPage() {
       setDriftActionError(cause instanceof Error ? cause.message : "Could not resolve this alert.");
     }
   }
+
+  function handleConnectSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!connectTarget.trim() || !connectConsent) return;
+    connectMutation.mutate({
+      provider: connectProvider,
+      target_name: connectTarget.trim(),
+      acl_label: connectAcl,
+    });
+  }
+
+  const isApprover = user?.role === "approver";
+  const connections = connectionsQuery.data ?? [];
 
   return (
     <section className="space-y-8 max-w-7xl mx-auto w-full pb-12 animate-in fade-in duration-300">
@@ -552,6 +590,7 @@ export function SourcesPage() {
         ) : null}
       </section>
 
+      {/* Connected Sources Table */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Connected Sources Inventory</h2>
@@ -605,4 +644,3 @@ export function SourcesPage() {
     </section>
   );
 }
-

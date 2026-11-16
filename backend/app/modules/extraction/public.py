@@ -18,4 +18,3 @@ def get_job(job_id: str) -> dict[str, Any] | None:
 def reset_demo(session: Session) -> None:
     session.execute(text("delete from extraction_jobs where project_id = 'proj-campus-event-portal'"))
     session.commit()
-

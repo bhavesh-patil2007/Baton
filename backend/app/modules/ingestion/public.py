@@ -1,6 +1,7 @@
 """PUBLIC API of ingestion. Other modules must use this module, not its internals."""
 from datetime import UTC, datetime
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core import acl
@@ -50,3 +51,26 @@ def create_captured_note(
         acl_label=acl_label,
         records=[record],
     )
+
+
+def list_connections(project_id: str, session: Session) -> list[dict]:
+    return service.list_connections(session, project_id)
+
+
+def create_connection(project_id: str, provider: str, target_name: str, acl_label: str, session: Session) -> dict:
+    return service.create_connection(session, project_id, provider, target_name, acl_label)
+
+
+def delete_connection(project_id: str, connection_id: str, session: Session) -> bool:
+    return service.delete_connection(session, project_id, connection_id)
+
+
+def sync_connection(project_id: str, connection_id: str, session: Session) -> dict:
+    return service.sync_connection(session, project_id, connection_id)
+
+
+def reset_demo(session: Session) -> None:
+    session.execute(text("delete from source_connections where project_id = 'proj-campus-event-portal'"))
+    session.execute(text("delete from source_chunks where project_id = 'proj-campus-event-portal' and source_id not like 'S%'"))
+    session.execute(text("delete from sources where project_id = 'proj-campus-event-portal' and id not like 'S%'"))
+    session.commit()
