@@ -645,11 +645,9 @@ def sync_connection(session: Session, project_id: str, connection_id: str) -> di
         if provider == "github":
             connector = GitHubConnector(target)
             source_type = "git"
-            source_title = f"GitHub: {target}"
         elif provider == "jira":
             connector = JiraConnector(target)
             source_type = "task_csv"
-            source_title = f"Jira: {target}"
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
