@@ -48,7 +48,7 @@ def test_source_connections_lifecycle(client, monkeypatch):
 
     github_batches = [
         [_record("Initial commit summary", "commit:abc123", "https://github.com/manjirirelekar47/Baton/commit/abc123")],
-        [_record("Initial commit summary", "commit:abc123")],
+        [_record("Initial commit summary", "commit:abc123", "https://github.com/manjirirelekar47/Baton/commit/abc123")],
         [_record("Updated commit summary", "commit:abc123", "https://github.com/manjirirelekar47/Baton/commit/abc123")],
     ]
     jira_batches = [[_record("CAMPUS-101: Transfer project ownership", "jira:CAMPUS-101", "https://example.atlassian.net/browse/CAMPUS-101")]]
