@@ -409,8 +409,8 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
         }`}
       >
         {/* Top Header */}
-        <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-xl border-b border-slate-200 shadow-xs px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-4">
-          <div className="flex items-center gap-2 sm:gap-3">
+        <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-xl border-b border-slate-200 shadow-xs px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-4 w-full max-w-full">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             {/* Mobile Drawer Trigger ONLY */}
             <button
               type="button"
@@ -425,15 +425,15 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
           {/* Search Bar */}
           <div
             onClick={() => setSearchModalOpen(true)}
-            className="relative flex-1 max-w-md cursor-pointer group"
+            className="relative flex-1 max-w-md cursor-pointer group min-w-0"
           >
-            <div className="w-full bg-slate-100/80 hover:bg-white focus-within:bg-white backdrop-blur-md border border-slate-200/80 rounded-xl px-3 sm:px-4 py-1.5 sm:py-2 flex items-center gap-2 sm:gap-3 text-slate-400 shadow-xs transition-all group-hover:border-purple-300">
+            <div className="w-full bg-slate-100/80 hover:bg-white focus-within:bg-white backdrop-blur-md border border-slate-200/80 rounded-xl px-2.5 sm:px-4 py-1.5 sm:py-2 flex items-center gap-1.5 sm:gap-3 text-slate-400 shadow-xs transition-all group-hover:border-purple-300">
               <Search className="w-4 h-4 text-purple-600 flex-shrink-0" />
               <span className="text-xs text-slate-500 truncate select-none hidden sm:inline">
                 Search claims, sources, or team members...
               </span>
               <span className="text-xs text-slate-500 truncate select-none sm:hidden">
-                Search Baton...
+                Search...
               </span>
               <kbd className="ml-auto hidden md:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-semibold text-slate-500 bg-white rounded border border-slate-200 shadow-xs">
                 ⌘ K
@@ -442,10 +442,10 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
           </div>
 
           {/* Right Header Telemetry & Controls */}
-          <div className="flex items-center gap-1.5 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             {/* Live Connection Telemetry Pill */}
             <div
-              className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 shadow-xs text-xs font-medium text-emerald-700"
+              className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 shadow-xs text-xs font-medium text-emerald-700"
               title={`${isConnected ? "Connected" : "Reconnecting"} (${latencyMs}ms)`}
             >
               <span className="relative flex h-2 w-2">
@@ -469,15 +469,15 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
             <button
               type="button"
               onClick={toggleTheme}
-              className="w-9 h-9 rounded-xl bg-white hover:bg-slate-100 border border-slate-200/80 flex items-center justify-center text-slate-600 hover:text-purple-700 transition-colors shadow-xs cursor-pointer focus:outline-none"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white hover:bg-slate-100 border border-slate-200/80 flex items-center justify-center text-slate-600 hover:text-purple-700 transition-colors shadow-xs cursor-pointer focus:outline-none flex-shrink-0"
               title="Switch to Dark Mode"
               aria-label="Switch to Dark Mode"
             >
               <Moon className="w-4 h-4" />
             </button>
 
-            {/* Notifications Bell */}
-            <div className="relative">
+            {/* Notifications Bell (hidden on mobile header; notifications are in drawer) */}
+            <div className="hidden sm:block relative">
               <button
                 type="button"
                 onClick={() => setNotificationsOpen((prev) => !prev)}
@@ -510,19 +510,21 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
               )}
             </div>
 
-            {/* Top Right User Avatar */}
-            {loading || !user ? (
-              <div className="w-9 h-9 rounded-xl bg-slate-200 animate-pulse flex-shrink-0" />
-            ) : (
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-purple-700 text-white font-bold text-xs flex items-center justify-center shadow-sm shadow-purple-500/20 flex-shrink-0">
-                {userInitials || "U"}
-              </div>
-            )}
+            {/* Top Right User Avatar (hidden on mobile header; profile is in drawer/bottom nav) */}
+            <div className="hidden sm:block">
+              {loading || !user ? (
+                <div className="w-9 h-9 rounded-xl bg-slate-200 animate-pulse flex-shrink-0" />
+              ) : (
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-purple-700 text-white font-bold text-xs flex items-center justify-center shadow-sm shadow-purple-500/20 flex-shrink-0">
+                  {userInitials || "U"}
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
         {/* Dynamic Main Page Content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-20 lg:pb-8 max-w-[1600px] w-full mx-auto">{children}</main>
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8 max-w-[1600px] w-full mx-auto min-w-0">{children}</main>
 
         {/* Mobile Persistent Bottom Navigation Bar */}
         <nav
