@@ -5,7 +5,17 @@ import { useAuth } from "@/app/auth";
 import { useLatestVersion } from "@/features/review/public";
 import { SourceDrawer } from "@/features/sources/public";
 import { EmptyState, ErrorState, Loading } from "@/shared/ui";
-import { acknowledge, getPlan, getView, respondOwnership, updateActionStatus, type EvidenceView } from "../api";
+import {
+  acknowledge,
+  createTask,
+  deleteTask,
+  getPlan,
+  getView,
+  respondOwnership,
+  updateActionStatus,
+  updateTask,
+  type EvidenceView,
+} from "../api";
 import { HiddenPlaceholder } from "../components/HiddenPlaceholder";
 import { PlanPanel } from "../components/PlanPanel";
 import { SectionBlock } from "../components/SectionBlock";
@@ -42,6 +52,18 @@ export function HandoverPage() {
   const statusMutation = useMutation({
     mutationFn: (v: { claimId: string; status: "not_started" | "in_progress" | "blocked" | "completed" }) =>
       updateActionStatus(versionId as string, v.claimId, v.status),
+    onSuccess: refreshPlan,
+  });
+  const createTaskMutation = useMutation({
+    mutationFn: (data: any) => createTask({ ...data, version_id: versionId as string }),
+    onSuccess: refreshPlan,
+  });
+  const updateTaskMutation = useMutation({
+    mutationFn: (v: { taskId: string; data: any }) => updateTask(v.taskId, { ...v.data, version_id: versionId as string }),
+    onSuccess: refreshPlan,
+  });
+  const deleteTaskMutation = useMutation({
+    mutationFn: (taskId: string) => deleteTask(versionId as string, taskId),
     onSuccess: refreshPlan,
   });
 
@@ -136,18 +158,30 @@ export function HandoverPage() {
 
       {tab === "plan" && (
         <div>
-          {plan.isLoading && <Loading label="Building the plan" />}
           {plan.error && <ErrorState title="Could not build the plan" detail={(plan.error as Error).message} onRetry={() => void plan.refetch()} />}
-          {plan.data && (
-            <>
-              <PlanPanel
-                plan={plan.data.plan}
-                onOpenCitation={setCitation}
-                onUpdateStatus={(claimId, status) => statusMutation.mutate({ claimId, status })}
-              />
-              <p className="mt-6 text-xs text-gray-400 font-mono">{plan.data.note}</p>
-            </>
-          )}
+          <PlanPanel
+            plan={plan.data?.plan}
+            versionId={versionId as string}
+            isLoading={plan.isLoading}
+            isApprover={user?.role === "approver"}
+            currentUserId={user?.id}
+            currentUserName={user?.name}
+            currentUserRole={user?.role}
+            onOpenCitation={setCitation}
+            onUpdateStatus={async (claimId, status) => {
+              await statusMutation.mutateAsync({ claimId, status });
+            }}
+            onCreateTask={async (data) => {
+              await createTaskMutation.mutateAsync(data);
+            }}
+            onUpdateTask={async (taskId, data) => {
+              await updateTaskMutation.mutateAsync({ taskId, data });
+            }}
+            onDeleteTask={async (taskId) => {
+              await deleteTaskMutation.mutateAsync(taskId);
+            }}
+          />
+          {plan.data && <p className="mt-6 text-xs text-gray-400 font-mono">{plan.data.note}</p>}
         </div>
       )}
 
