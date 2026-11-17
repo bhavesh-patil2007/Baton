@@ -8,6 +8,7 @@ Owned modules: ingestion (F1/F2), risk (F6), Sources and Risk frontend features,
 - Upload size and filename validation; L4 is rejected before parsing or storing the uploaded file.
 - Secret and contact-information redaction before source chunk persistence.
 - Stable chunk identifiers, content hashes, source offsets, author, event time and per-source access labels.
+- Live-provider provenance is retained per immutable imported snapshot: provider name, stable external object ID, original GitHub/Jira URL, redacted content SHA-256 and provider update timestamp. Source inventory and chunk APIs expose these fields after ACL filtering.
 - Project-scoped source inventory and evidence lookup; the ingestion public API applies the existing central ACL before returning chunks.
 - Risk uses the ingestion `public.py` contract (never ingestion internals), so ACL filtering happens before any timeline, concentration or task-chain calculation.
 - Deterministic timeline, explainable ownership-concentration signals and blocked/overdue task chains, including evidence chunk identifiers. Typed graph relationships cover authorship, PR reviews, imports, task ownership and blocking.
