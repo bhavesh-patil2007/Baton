@@ -516,7 +516,70 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
         </header>
 
         {/* Dynamic Main Page Content */}
-        <main className="flex-1 p-6 lg:p-8 max-w-[1600px] w-full mx-auto">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-20 lg:pb-8 max-w-[1600px] w-full mx-auto">{children}</main>
+
+        {/* Mobile Persistent Bottom Navigation Bar */}
+        <nav
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-xl border-t border-slate-200 px-2 py-1.5 flex items-center justify-around shadow-lg shadow-slate-200/50"
+          aria-label="Mobile quick navigation"
+        >
+          <Link
+            to="/dashboard"
+            className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
+              location.pathname === "/" || location.pathname === "/dashboard"
+                ? "text-purple-700 font-semibold"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <LayoutDashboard className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Dashboard</span>
+          </Link>
+
+          <Link
+            to="/sources"
+            className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
+              location.pathname.startsWith("/sources")
+                ? "text-purple-700 font-semibold"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <Plus className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Sources</span>
+          </Link>
+
+          <Link
+            to="/ledger"
+            className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
+              location.pathname.startsWith("/ledger")
+                ? "text-purple-700 font-semibold"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <FileText className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Ledger</span>
+          </Link>
+
+          <Link
+            to="/handover"
+            className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
+              location.pathname.startsWith("/handover")
+                ? "text-purple-700 font-semibold"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <Download className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Handover</span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            className="flex flex-col items-center py-1 px-2 rounded-xl text-slate-500 hover:text-slate-900 transition-colors"
+          >
+            <Menu className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">More</span>
+          </button>
+        </nav>
       </div>
 
       {/* ⌘K SEARCH MODAL */}

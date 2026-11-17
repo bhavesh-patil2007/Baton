@@ -516,7 +516,70 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
         </header>
 
         {/* Dynamic Main Page Content */}
-        <main className="flex-1 p-6 lg:p-8 max-w-[1600px] w-full mx-auto">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-20 lg:pb-8 max-w-[1600px] w-full mx-auto">{children}</main>
+
+        {/* Mobile Persistent Bottom Navigation Bar */}
+        <nav
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/80 backdrop-blur-xl border-t border-white/10 px-2 py-1.5 flex items-center justify-around shadow-2xl"
+          aria-label="Mobile quick navigation"
+        >
+          <Link
+            to="/dashboard"
+            className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
+              location.pathname === "/" || location.pathname === "/dashboard"
+                ? "text-purple-400 font-semibold"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <LayoutDashboard className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Dashboard</span>
+          </Link>
+
+          <Link
+            to="/sources"
+            className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
+              location.pathname.startsWith("/sources")
+                ? "text-purple-400 font-semibold"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <Plus className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Sources</span>
+          </Link>
+
+          <Link
+            to="/ledger"
+            className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
+              location.pathname.startsWith("/ledger")
+                ? "text-purple-400 font-semibold"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <FileText className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Ledger</span>
+          </Link>
+
+          <Link
+            to="/handover"
+            className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
+              location.pathname.startsWith("/handover")
+                ? "text-purple-400 font-semibold"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <Download className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Handover</span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            className="flex flex-col items-center py-1 px-2 rounded-xl text-gray-400 hover:text-white transition-colors"
+          >
+            <Menu className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">More</span>
+          </button>
+        </nav>
       </div>
 
       {/* ⌘K SEARCH MODAL */}
