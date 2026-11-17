@@ -99,9 +99,9 @@ def _adf_to_text(value: Any) -> str:
 class GitHubConnector:
     """Read-only GitHub repository connector for commits, pull requests and issues."""
 
-    def __init__(self, target_repo: str):
+    def __init__(self, target_repo: str, token: str | None = None):
         self.target_repo = target_repo.strip()
-        self.token = os.environ.get("GITHUB_SYNC_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        self.token = token or os.environ.get("GITHUB_SYNC_TOKEN") or os.environ.get("GITHUB_TOKEN")
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", self.target_repo):
             raise ProviderSyncError("GitHub repository must use the owner/repository format.")
 
@@ -225,29 +225,58 @@ class GitHubConnector:
 class JiraConnector:
     """Read-only Jira Cloud connector using the current enhanced JQL search endpoint."""
 
-    def __init__(self, target_project: str):
+    def __init__(
+        self,
+        target_project: str,
+        base_url: str | None = None,
+        token: str | None = None,
+        email: str | None = None,
+        is_oauth: bool = False,
+        cloud_id: str | None = None,
+    ):
         self.target_project = target_project.strip().upper()
-        self.base_url = os.environ.get("JIRA_URL", "").rstrip("/")
-        self.email = os.environ.get("JIRA_USER_EMAIL", "").strip()
-        self.token = os.environ.get("JIRA_API_TOKEN", "")
+        self.is_oauth = is_oauth
+        self.cloud_id = cloud_id
+
         if not re.fullmatch(r"[A-Z][A-Z0-9_]{1,19}", self.target_project):
             raise ProviderSyncError("Jira project must be a valid project key, such as CAMPUS.")
-        if not self.base_url or not self.email or not self.token:
+
+        if is_oauth and token:
+            self.token = token
+            self.email = ""
+            if cloud_id:
+                self.base_url = f"https://api.atlassian.com/ex/jira/{cloud_id}"
+            else:
+                self.base_url = (base_url or os.environ.get("JIRA_URL", "")).rstrip("/")
+        else:
+            self.base_url = (base_url or os.environ.get("JIRA_URL", "")).rstrip("/")
+            self.email = (email or os.environ.get("JIRA_USER_EMAIL", "")).strip()
+            self.token = token or os.environ.get("JIRA_API_TOKEN", "")
+
+        if not self.base_url or (not self.is_oauth and not self.email) or not self.token:
             raise ProviderSyncError(
-                "Jira sync is not configured. Set JIRA_URL, JIRA_USER_EMAIL and JIRA_API_TOKEN on the API server."
+                "Jira sync is not configured. Set JIRA_URL, JIRA_USER_EMAIL and JIRA_API_TOKEN on the API server, or connect via OAuth."
             )
         parsed = urllib.parse.urlsplit(self.base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ProviderSyncError("JIRA_URL must be an absolute HTTP(S) URL.")
 
     def _search_page(self, jql: str, page_token: str | None) -> dict[str, Any]:
-        credentials = base64.b64encode(f"{self.email}:{self.token}".encode("utf-8")).decode("ascii")
-        headers = {
-            "Authorization": f"Basic {credentials}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": "Baton-Ingestion/1.0",
-        }
+        if self.is_oauth:
+            headers = {
+                "Authorization": f"Bearer {self.token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": "Baton-Ingestion/1.0",
+            }
+        else:
+            credentials = base64.b64encode(f"{self.email}:{self.token}".encode("utf-8")).decode("ascii")
+            headers = {
+                "Authorization": f"Basic {credentials}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": "Baton-Ingestion/1.0",
+            }
         payload: dict[str, Any] = {
             "jql": jql,
             "maxResults": PAGE_SIZE,
