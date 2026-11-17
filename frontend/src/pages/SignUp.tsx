@@ -751,9 +751,24 @@ export function SignUp() {
 
               {/* Error Notice */}
               {error && (
-                <div className="mb-5 p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 flex-shrink-0" />
-                  <span>{error}</span>
+                <div className="mb-5 p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-rose-700 dark:text-rose-300 text-xs font-medium">
+                  <div className="flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 flex-shrink-0 mt-1.5" />
+                    <span>{error}</span>
+                  </div>
+                  {error.includes("GitHub sign-in could not finish") && (
+                    <div className="mt-3 pt-2.5 border-t border-rose-200/80 dark:border-rose-800/60 flex flex-col sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDemoLogin}
+                        disabled={submitting}
+                        className="w-full py-2 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Bypass & Enter Workspace (1-Click Demo) →</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
