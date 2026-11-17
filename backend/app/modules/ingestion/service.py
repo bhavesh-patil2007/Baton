@@ -44,6 +44,7 @@ class ParsedRecord:
     author: str = "Unknown"
     event_time: datetime = datetime(1970, 1, 1, tzinfo=UTC)
     external_id: str | None = None
+    title: str | None = None
 
 
 def redact_text(value: str) -> str:
@@ -477,6 +478,18 @@ def delete_connection(session: Session, project_id: str, connection_id: str) -> 
     return res.rowcount > 0
 
 
+def _format_provider_display(provider: str) -> str:
+    p = provider.strip()
+    mapping = {
+        "github": "GitHub",
+        "jira": "Jira",
+        "slack": "Slack",
+        "confluence": "Confluence",
+        "notion": "Notion",
+    }
+    return mapping.get(p.lower(), p.title())
+
+
 def persist_provider_records(
     session: Session,
     *,
@@ -495,7 +508,8 @@ def persist_provider_records(
     Returns (added, updated, skipped).
     """
     added = updated = skipped = 0
-    source_prefix = f"{provider.title()}: {target_name}"
+    provider_display = _format_provider_display(provider)
+    source_prefix = f"{provider_display}: {target_name}"
 
     for record in records:
         safe_text = redact_text(record.text).strip()
@@ -528,8 +542,19 @@ def persist_provider_records(
             continue
 
         source_id = f"src-{uuid.uuid4().hex[:12]}"
-        source_title = f"{source_prefix} · {external_id}"
-        snapshot = ParsedRecord(safe_text, author, event_time, external_id)
+        orig_title = (
+            getattr(record, "title", None)
+            or (safe_text.splitlines()[0].strip() if safe_text else "")
+            or external_id
+        )
+        if orig_title.lower().startswith(source_prefix.lower()):
+            source_title = f"{source_prefix}{orig_title[len(source_prefix):]}"
+        elif orig_title:
+            source_title = f"{source_prefix} - {orig_title}"
+        else:
+            source_title = source_prefix
+
+        snapshot = ParsedRecord(safe_text, author, event_time, external_id, title=orig_title)
         chunks = chunk_record(
             snapshot,
             project_id=project_id,
