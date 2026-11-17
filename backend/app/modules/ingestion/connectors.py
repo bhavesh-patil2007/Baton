@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -53,7 +54,17 @@ def _cursor_datetime(cursor: str | None) -> datetime | None:
 def _load_json(request: urllib.request.Request) -> Any:
     """Run one provider request and return JSON without leaking credentials in errors."""
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
+        ctx = None
+        try:
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            try:
+                ctx = ssl.create_default_context()
+            except Exception:
+                ctx = None
+
+        with urllib.request.urlopen(request, timeout=20, context=ctx) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):
