@@ -52,7 +52,7 @@ export function PlanPanel({
                 return (
                   <li
                     key={item.claim_id}
-                    className={`rounded-2xl border p-5 shadow-sm transition-all ${
+                    className={`rounded-2xl border p-4 sm:p-5 shadow-sm transition-all ${
                       currentStatus === "completed"
                         ? "border-emerald-200 bg-emerald-50/30 dark:border-emerald-900/40 dark:bg-emerald-950/20"
                         : "border-slate-200 bg-white dark:border-white/10 dark:bg-black/40 dark:backdrop-blur-2xl"

@@ -267,7 +267,7 @@ export function SourcesPage() {
           {isApprover && (
             <Button
               onClick={() => setIsConnectOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white self-start sm:self-auto flex-shrink-0"
             >
               <Plus className="w-3.5 h-3.5" /> Connect Live Source
             </Button>
@@ -599,9 +599,9 @@ export function SourcesPage() {
 
       {/* Connected Sources Table */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Connected Sources Inventory</h2>
-          <Button variant="quiet" onClick={() => void refetch()}>
+          <Button variant="quiet" onClick={() => void refetch()} className="self-start sm:self-auto">
             Refresh
           </Button>
         </div>

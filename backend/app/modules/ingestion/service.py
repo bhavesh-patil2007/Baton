@@ -508,7 +508,7 @@ def persist_provider_records(
     Returns (added, updated, skipped).
     """
     added = updated = skipped = 0
-    provider_display = _format_provider_display(provider)
+    provider_display = "GitHub" if provider.lower() == "github" else ("Jira" if provider.lower() == "jira" else provider.title())
     source_prefix = f"{provider_display}: {target_name}"
 
     for record in records:
