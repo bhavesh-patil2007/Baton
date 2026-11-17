@@ -30,6 +30,7 @@ import {
   Bell,
   Plus,
   Download,
+  X,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -52,6 +53,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
 
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const showLabels = isExpanded || mobileMenuOpen;
   const [profileDropdownOpen, setProfileDropdownOpen] = useState<boolean>(false);
   const [notificationsOpen, setNotificationsOpen] = useState<boolean>(false);
   const [searchModalOpen, setSearchModalOpen] = useState<boolean>(false);
@@ -163,12 +165,12 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
         </button>
 
         <div className="px-3.5 py-5 flex flex-col">
-          {/* Logo Brand Header */}
-          <div className="mb-4">
+          {/* Logo Brand Header & Mobile Close */}
+          <div className="mb-4 flex items-center justify-between">
             <Link
               to="/dashboard"
               onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center gap-3 px-4 py-5 focus:outline-none transition-all duration-200"
+              className="flex items-center gap-3 px-3 py-3 focus:outline-none transition-all duration-200"
               title="Baton - Know. Verify. Handover."
             >
               <img
@@ -179,12 +181,22 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                   (e.currentTarget as HTMLImageElement).src = "/logo.png";
                 }}
               />
-              {isExpanded && (
+              {showLabels && (
                 <span className="text-2xl font-extrabold text-indigo-950 dark:text-white tracking-tight whitespace-nowrap">
                   Baton
                 </span>
               )}
             </Link>
+            {mobileMenuOpen && (
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="lg:hidden p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 focus:outline-none transition-colors"
+                aria-label="Close mobile menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
 
           {/* Navigation Items (Glowing Dark Mode Pill Design) */}
@@ -203,7 +215,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                   title={item.name}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`group relative flex items-center transition-all duration-200 ${
-                    isExpanded
+                    showLabels
                       ? "px-3.5 py-2.5 rounded-xl gap-3"
                       : "w-11 h-11 mx-auto justify-center rounded-xl"
                   } ${
@@ -218,14 +230,14 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                     }`}
                   />
 
-                  {isExpanded && (
+                  {showLabels && (
                     <span className="text-sm font-medium truncate flex-1">{item.name}</span>
                   )}
 
                   {item.badge !== undefined && item.badge > 0 && (
                     <span
                       className={`font-bold rounded-full bg-purple-600 text-white shadow-xs ${
-                        isExpanded
+                        showLabels
                           ? "px-2 py-0.5 text-[10px]"
                           : "absolute -top-1 -right-1 w-4 h-4 text-[9px] flex items-center justify-center"
                       }`}
@@ -234,7 +246,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                     </span>
                   )}
 
-                  {!isExpanded && (
+                  {!showLabels && (
                     <div className="absolute left-full ml-3 px-3 py-1.5 rounded-lg bg-black/90 border border-white/20 text-white text-xs font-semibold whitespace-nowrap shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 z-50">
                       {item.name}
                       {item.badge !== undefined && item.badge > 0 && (
@@ -254,7 +266,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
             type="button"
             onClick={() => setProfileDropdownOpen((prev) => !prev)}
             className={`w-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/40 rounded-2xl transition-all text-left focus:outline-none flex items-center ${
-              isExpanded ? "p-2.5 justify-between" : "p-2 justify-center"
+              showLabels ? "p-2.5 justify-between" : "p-2 justify-center"
             }`}
             aria-expanded={profileDropdownOpen}
             title={user ? `${user.name} (${user.displayRole || user.role})` : "User Profile"}
@@ -271,7 +283,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                 <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
               </div>
 
-              {isExpanded && (
+              {showLabels && (
                 <div className="min-w-0 flex-1">
                   {loading || !user ? (
                     <div className="space-y-1">
@@ -292,7 +304,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
               )}
             </div>
 
-            {isExpanded && (
+            {showLabels && (
               <ChevronDown
                 className={`w-4 h-4 text-slate-400 transition-transform flex-shrink-0 ${
                   profileDropdownOpen ? "rotate-180" : ""
@@ -305,7 +317,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
           {profileDropdownOpen && (
             <div
               className={`absolute bottom-16 bg-black/90 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/15 p-2 z-50 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 ${
-                isExpanded ? "left-3 right-3" : "left-20 w-64"
+                showLabels ? "left-3 right-3" : "left-20 w-64"
               }`}
             >
               <div className="px-3 py-2 border-b border-white/10">
