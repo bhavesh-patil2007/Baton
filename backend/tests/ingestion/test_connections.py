@@ -137,6 +137,10 @@ def test_source_connections_lifecycle(client, monkeypatch):
     contributor_titles = [source["title"] for source in contributor_sources]
     assert any("Jira: CAMPUS" in title for title in contributor_titles)
     assert not any("GitHub: manjirirelekar47/Baton" in title for title in contributor_titles)
+    assert not any(
+        source.get("source_url") == "https://github.com/manjirirelekar47/Baton/commit/abc123"
+        for source in contributor_sources
+    )
 
     deleted = client.delete(f"/sources/connections/{conn_id}", headers=approver)
     assert deleted.status_code == 200
