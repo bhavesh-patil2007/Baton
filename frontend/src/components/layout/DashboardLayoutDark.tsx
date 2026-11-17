@@ -409,8 +409,8 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
         }`}
       >
         {/* Top Header */}
-        <header className="sticky top-0 z-30 bg-black/40 backdrop-blur-xl border-b border-white/10 shadow-xs px-6 py-3.5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 bg-black/40 backdrop-blur-xl border-b border-white/10 shadow-xs px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* Mobile Drawer Trigger ONLY */}
             <button
               type="button"
@@ -427,21 +427,27 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
             onClick={() => setSearchModalOpen(true)}
             className="relative flex-1 max-w-md cursor-pointer group"
           >
-            <div className="w-full bg-white/5 hover:bg-white/10 focus-within:bg-white/10 backdrop-blur-md border border-white/10 rounded-xl px-4 py-2 flex items-center gap-3 text-gray-400 shadow-xs transition-all group-hover:border-purple-500/50">
-              <Search className="w-4 h-4 text-purple-400" />
-              <span className="text-xs text-gray-400 truncate select-none">
+            <div className="w-full bg-white/5 hover:bg-white/10 focus-within:bg-white/10 backdrop-blur-md border border-white/10 rounded-xl px-3 sm:px-4 py-1.5 sm:py-2 flex items-center gap-2 sm:gap-3 text-gray-400 shadow-xs transition-all group-hover:border-purple-500/50">
+              <Search className="w-4 h-4 text-purple-400 flex-shrink-0" />
+              <span className="text-xs text-gray-400 truncate select-none hidden sm:inline">
                 Search claims, sources, or team members...
               </span>
-              <kbd className="ml-auto hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-semibold text-gray-300 bg-white/10 rounded border border-white/10 shadow-xs">
+              <span className="text-xs text-gray-400 truncate select-none sm:hidden">
+                Search Baton...
+              </span>
+              <kbd className="ml-auto hidden md:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-semibold text-gray-300 bg-white/10 rounded border border-white/10 shadow-xs">
                 ⌘ K
               </kbd>
             </div>
           </div>
 
           {/* Right Header Telemetry & Controls */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             {/* Live Connection Telemetry Pill */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-950/40 border border-emerald-500/30 shadow-xs text-xs font-medium text-emerald-300">
+            <div
+              className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full bg-emerald-950/40 border border-emerald-500/30 shadow-xs text-xs font-medium text-emerald-300"
+              title={`${isConnected ? "Connected" : "Reconnecting"} (${latencyMs}ms)`}
+            >
               <span className="relative flex h-2 w-2">
                 {isConnected && (
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -452,11 +458,11 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                   }`}
                 />
               </span>
-              <span className="font-semibold text-emerald-200">
+              <span className="font-semibold text-emerald-200 hidden sm:inline">
                 {isConnected ? "Connected" : "Reconnecting"}
               </span>
-              <span className="text-slate-600">|</span>
-              <span className="text-emerald-400 text-[11px] font-mono">{latencyMs}ms</span>
+              <span className="text-slate-600 hidden sm:inline">|</span>
+              <span className="text-emerald-400 text-[10px] sm:text-[11px] font-mono">{latencyMs}ms</span>
             </div>
 
             {/* Theme Toggle Button -> Switches to Light Mode */}
