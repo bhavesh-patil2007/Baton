@@ -30,6 +30,7 @@ import {
   Bell,
   Plus,
   Download,
+  X,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -52,6 +53,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
 
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const showLabels = isExpanded || mobileMenuOpen;
   const [profileDropdownOpen, setProfileDropdownOpen] = useState<boolean>(false);
   const [notificationsOpen, setNotificationsOpen] = useState<boolean>(false);
   const [searchModalOpen, setSearchModalOpen] = useState<boolean>(false);
@@ -163,12 +165,12 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
         </button>
 
         <div className="px-3.5 py-5 flex flex-col">
-          {/* Logo Brand Header */}
-          <div className="mb-4">
+          {/* Logo Brand Header & Mobile Close */}
+          <div className="mb-4 flex items-center justify-between">
             <Link
               to="/dashboard"
               onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center gap-3 px-4 py-5 focus:outline-none transition-all duration-200"
+              className="flex items-center gap-3 px-3 py-3 focus:outline-none transition-all duration-200"
               title="Baton - Know. Verify. Handover."
             >
               <img
@@ -179,12 +181,22 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                   (e.currentTarget as HTMLImageElement).src = "/logo.png";
                 }}
               />
-              {isExpanded && (
+              {showLabels && (
                 <span className="text-2xl font-extrabold text-indigo-950 dark:text-white tracking-tight whitespace-nowrap">
                   Baton
                 </span>
               )}
             </Link>
+            {mobileMenuOpen && (
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="lg:hidden p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 focus:outline-none transition-colors"
+                aria-label="Close mobile menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
 
           {/* Navigation Items (Glowing Dark Mode Pill Design) */}
@@ -203,7 +215,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                   title={item.name}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`group relative flex items-center transition-all duration-200 ${
-                    isExpanded
+                    showLabels
                       ? "px-3.5 py-2.5 rounded-xl gap-3"
                       : "w-11 h-11 mx-auto justify-center rounded-xl"
                   } ${
@@ -218,14 +230,14 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                     }`}
                   />
 
-                  {isExpanded && (
+                  {showLabels && (
                     <span className="text-sm font-medium truncate flex-1">{item.name}</span>
                   )}
 
                   {item.badge !== undefined && item.badge > 0 && (
                     <span
                       className={`font-bold rounded-full bg-purple-600 text-white shadow-xs ${
-                        isExpanded
+                        showLabels
                           ? "px-2 py-0.5 text-[10px]"
                           : "absolute -top-1 -right-1 w-4 h-4 text-[9px] flex items-center justify-center"
                       }`}
@@ -234,7 +246,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                     </span>
                   )}
 
-                  {!isExpanded && (
+                  {!showLabels && (
                     <div className="absolute left-full ml-3 px-3 py-1.5 rounded-lg bg-black/90 border border-white/20 text-white text-xs font-semibold whitespace-nowrap shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 z-50">
                       {item.name}
                       {item.badge !== undefined && item.badge > 0 && (
@@ -254,7 +266,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
             type="button"
             onClick={() => setProfileDropdownOpen((prev) => !prev)}
             className={`w-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/40 rounded-2xl transition-all text-left focus:outline-none flex items-center ${
-              isExpanded ? "p-2.5 justify-between" : "p-2 justify-center"
+              showLabels ? "p-2.5 justify-between" : "p-2 justify-center"
             }`}
             aria-expanded={profileDropdownOpen}
             title={user ? `${user.name} (${user.displayRole || user.role})` : "User Profile"}
@@ -271,7 +283,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                 <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
               </div>
 
-              {isExpanded && (
+              {showLabels && (
                 <div className="min-w-0 flex-1">
                   {loading || !user ? (
                     <div className="space-y-1">
@@ -292,7 +304,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
               )}
             </div>
 
-            {isExpanded && (
+            {showLabels && (
               <ChevronDown
                 className={`w-4 h-4 text-slate-400 transition-transform flex-shrink-0 ${
                   profileDropdownOpen ? "rotate-180" : ""
@@ -305,7 +317,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
           {profileDropdownOpen && (
             <div
               className={`absolute bottom-16 bg-black/90 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/15 p-2 z-50 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 ${
-                isExpanded ? "left-3 right-3" : "left-20 w-64"
+                showLabels ? "left-3 right-3" : "left-20 w-64"
               }`}
             >
               <div className="px-3 py-2 border-b border-white/10">
@@ -397,8 +409,8 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
         }`}
       >
         {/* Top Header */}
-        <header className="sticky top-0 z-30 bg-black/40 backdrop-blur-xl border-b border-white/10 shadow-xs px-6 py-3.5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 bg-black/40 backdrop-blur-xl border-b border-white/10 shadow-xs px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-4 w-full max-w-full">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             {/* Mobile Drawer Trigger ONLY */}
             <button
               type="button"
@@ -413,23 +425,29 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
           {/* Search Bar */}
           <div
             onClick={() => setSearchModalOpen(true)}
-            className="relative flex-1 max-w-md cursor-pointer group"
+            className="relative flex-1 max-w-md cursor-pointer group min-w-0"
           >
-            <div className="w-full bg-white/5 hover:bg-white/10 focus-within:bg-white/10 backdrop-blur-md border border-white/10 rounded-xl px-4 py-2 flex items-center gap-3 text-gray-400 shadow-xs transition-all group-hover:border-purple-500/50">
-              <Search className="w-4 h-4 text-purple-400" />
-              <span className="text-xs text-gray-400 truncate select-none">
+            <div className="w-full bg-white/5 hover:bg-white/10 focus-within:bg-white/10 backdrop-blur-md border border-white/10 rounded-xl px-2.5 sm:px-4 py-1.5 sm:py-2 flex items-center gap-1.5 sm:gap-3 text-gray-400 shadow-xs transition-all group-hover:border-purple-500/50">
+              <Search className="w-4 h-4 text-purple-400 flex-shrink-0" />
+              <span className="text-xs text-gray-400 truncate select-none hidden sm:inline">
                 Search claims, sources, or team members...
               </span>
-              <kbd className="ml-auto hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-semibold text-gray-300 bg-white/10 rounded border border-white/10 shadow-xs">
+              <span className="text-xs text-gray-400 truncate select-none sm:hidden">
+                Search...
+              </span>
+              <kbd className="ml-auto hidden md:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-semibold text-gray-300 bg-white/10 rounded border border-white/10 shadow-xs">
                 ⌘ K
               </kbd>
             </div>
           </div>
 
           {/* Right Header Telemetry & Controls */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             {/* Live Connection Telemetry Pill */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-950/40 border border-emerald-500/30 shadow-xs text-xs font-medium text-emerald-300">
+            <div
+              className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full bg-emerald-950/40 border border-emerald-500/30 shadow-xs text-xs font-medium text-emerald-300"
+              title={`${isConnected ? "Connected" : "Reconnecting"} (${latencyMs}ms)`}
+            >
               <span className="relative flex h-2 w-2">
                 {isConnected && (
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -440,26 +458,26 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                   }`}
                 />
               </span>
-              <span className="font-semibold text-emerald-200">
+              <span className="font-semibold text-emerald-200 hidden sm:inline">
                 {isConnected ? "Connected" : "Reconnecting"}
               </span>
-              <span className="text-slate-600">|</span>
-              <span className="text-emerald-400 text-[11px] font-mono">{latencyMs}ms</span>
+              <span className="text-slate-600 hidden sm:inline">|</span>
+              <span className="text-emerald-400 text-[10px] sm:text-[11px] font-mono">{latencyMs}ms</span>
             </div>
 
             {/* Theme Toggle Button -> Switches to Light Mode */}
             <button
               type="button"
               onClick={toggleTheme}
-              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-amber-300 transition-colors shadow-xs cursor-pointer focus:outline-none"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-amber-300 transition-colors shadow-xs cursor-pointer focus:outline-none flex-shrink-0"
               title="Switch to Light Mode"
               aria-label="Switch to Light Mode"
             >
               <Sun className="w-4 h-4 text-amber-400" />
             </button>
 
-            {/* Notifications Bell */}
-            <div className="relative">
+            {/* Notifications Bell (hidden on mobile header; notifications are in drawer) */}
+            <div className="hidden sm:block relative">
               <button
                 type="button"
                 onClick={() => setNotificationsOpen((prev) => !prev)}
@@ -492,19 +510,84 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
               )}
             </div>
 
-            {/* Top Right User Avatar */}
-            {loading || !user ? (
-              <div className="w-9 h-9 rounded-xl bg-slate-800 animate-pulse flex-shrink-0" />
-            ) : (
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-purple-700 text-white font-bold text-xs flex items-center justify-center shadow-sm shadow-purple-500/20 flex-shrink-0">
-                {userInitials || "U"}
-              </div>
-            )}
+            {/* Top Right User Avatar (hidden on mobile header; profile is in drawer/bottom nav) */}
+            <div className="hidden sm:block">
+              {loading || !user ? (
+                <div className="w-9 h-9 rounded-xl bg-slate-800 animate-pulse flex-shrink-0" />
+              ) : (
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-purple-700 text-white font-bold text-xs flex items-center justify-center shadow-sm shadow-purple-500/20 flex-shrink-0">
+                  {userInitials || "U"}
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
         {/* Dynamic Main Page Content */}
-        <main className="flex-1 p-6 lg:p-8 max-w-[1600px] w-full mx-auto">{children}</main>
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8 max-w-[1600px] w-full mx-auto min-w-0">{children}</main>
+
+        {/* Mobile Persistent Bottom Navigation Bar */}
+        <nav
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/80 backdrop-blur-xl border-t border-white/10 px-2 py-1.5 flex items-center justify-around shadow-2xl"
+          aria-label="Mobile quick navigation"
+        >
+          <Link
+            to="/dashboard"
+            className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
+              location.pathname === "/" || location.pathname === "/dashboard"
+                ? "text-purple-400 font-semibold"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <LayoutDashboard className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Dashboard</span>
+          </Link>
+
+          <Link
+            to="/sources"
+            className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
+              location.pathname.startsWith("/sources")
+                ? "text-purple-400 font-semibold"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <Plus className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Sources</span>
+          </Link>
+
+          <Link
+            to="/ledger"
+            className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
+              location.pathname.startsWith("/ledger")
+                ? "text-purple-400 font-semibold"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <FileText className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Ledger</span>
+          </Link>
+
+          <Link
+            to="/handover"
+            className={`flex flex-col items-center py-1 px-2 rounded-xl transition-colors ${
+              location.pathname.startsWith("/handover")
+                ? "text-purple-400 font-semibold"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <Download className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Handover</span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            className="flex flex-col items-center py-1 px-2 rounded-xl text-gray-400 hover:text-white transition-colors"
+          >
+            <Menu className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">More</span>
+          </button>
+        </nav>
       </div>
 
       {/* ⌘K SEARCH MODAL */}

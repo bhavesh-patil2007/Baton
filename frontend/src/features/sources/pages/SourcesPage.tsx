@@ -223,24 +223,24 @@ export function SourcesPage() {
   const connections = connectionsQuery.data ?? [];
 
   return (
-    <section className="space-y-8 max-w-7xl mx-auto w-full pb-12 animate-in fade-in duration-300">
+    <section className="space-y-6 sm:space-y-8 max-w-7xl mx-auto w-full pb-12 animate-in fade-in duration-300 min-w-0">
       {/* Header with Back Navigation and High-Contrast Typography */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-start sm:items-center gap-3 sm:gap-4">
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 shadow-sm transition-all dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10 cursor-pointer"
+          className="p-2 sm:p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 shadow-sm transition-all dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10 cursor-pointer flex-shrink-0 mt-0.5 sm:mt-0"
           aria-label="Go back"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
         </button>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
             Connect Sources
           </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-gray-300">
+          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-gray-300 leading-normal">
             Import authorised project records. Secrets and contact details are redacted before evidence is stored.
           </p>
         </div>
@@ -249,25 +249,25 @@ export function SourcesPage() {
       {/* =========================================================================
           COMMITMENT 1: LIVE PROJECT SYNC (GITHUB & JIRA)
          ========================================================================= */}
-      <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-black/40 backdrop-blur-2xl p-6 shadow-sm dark:shadow-2xl space-y-4">
+      <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-black/40 backdrop-blur-2xl p-4 sm:p-6 shadow-sm dark:shadow-2xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 dark:border-white/10 pb-4">
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
+              <span className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex-shrink-0">
                 <GitBranch className="w-4 h-4" />
               </span>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
                 Live Source Syncing (GitHub & Jira)
               </h2>
             </div>
-            <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
+            <p className="text-xs text-slate-500 dark:text-gray-400 mt-1 leading-normal">
               Read-only connectors with repeatable incremental checkpoints. No browser secrets.
             </p>
           </div>
           {isApprover && (
             <Button
               onClick={() => setIsConnectOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white self-start sm:self-auto flex-shrink-0"
             >
               <Plus className="w-3.5 h-3.5" /> Connect Live Source
             </Button>
@@ -491,9 +491,9 @@ export function SourcesPage() {
 
       {/* Manual Upload Section */}
       {isApprover ? (
-        <form onSubmit={handleUpload} className="space-y-4 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-black/40 backdrop-blur-2xl p-6 shadow-sm dark:shadow-2xl">
+        <form onSubmit={handleUpload} className="space-y-4 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-black/40 backdrop-blur-2xl p-4 sm:p-6 shadow-sm dark:shadow-2xl">
           <div className="flex items-center gap-2 border-b border-slate-100 dark:border-white/10 pb-3">
-            <span className="p-1.5 rounded-lg bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400">
+            <span className="p-1.5 rounded-lg bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex-shrink-0">
               <Layers className="w-4 h-4" />
             </span>
             <h2 className="text-base font-bold text-slate-900 dark:text-white">Direct Document Upload</h2>
@@ -507,7 +507,7 @@ export function SourcesPage() {
               type="file"
               accept={ACCEPTED}
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              className="mt-2 block w-full text-xs text-slate-500 dark:text-gray-400 file:mr-4 file:rounded-xl file:border-0 file:bg-purple-50 dark:file:bg-purple-950/50 file:px-4 file:py-2 file:text-xs file:font-bold file:text-purple-700 dark:file:text-purple-300 hover:file:bg-purple-100 dark:hover:file:bg-purple-900/60 transition cursor-pointer"
+              className="mt-2 block w-full text-xs text-slate-500 dark:text-gray-400 file:mr-2 sm:file:mr-4 file:rounded-xl file:border-0 file:bg-purple-50 dark:file:bg-purple-950/50 file:px-3 sm:file:px-4 file:py-2 file:text-xs file:font-bold file:text-purple-700 dark:file:text-purple-300 hover:file:bg-purple-100 dark:hover:file:bg-purple-900/60 transition cursor-pointer"
             />
             <p className="mt-1.5 text-xs text-slate-500 dark:text-gray-500">MD, TXT, PDF, DOCX, Git JSON or task CSV. Maximum 10 MB.</p>
           </div>
@@ -519,7 +519,7 @@ export function SourcesPage() {
               id="source-access"
               value={aclLabel}
               onChange={(event) => setAclLabel(event.target.value)}
-              className="mt-1.5 rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-black/60 px-3.5 py-2 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-purple-500"
+              className="mt-1.5 w-full sm:w-auto rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-black/60 px-3.5 py-2 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-purple-500"
             >
               <option value="L1">L1 — Team-wide</option>
               <option value="L2">L2 — Maintainers</option>
@@ -532,9 +532,9 @@ export function SourcesPage() {
               type="checkbox"
               checked={consent}
               onChange={(event) => setConsent(event.target.checked)}
-              className="mt-0.5 rounded border-slate-300 dark:border-white/20 bg-white dark:bg-black/40 text-purple-600 focus:ring-purple-500"
+              className="mt-0.5 rounded border-slate-300 dark:border-white/20 bg-white dark:bg-black/40 text-purple-600 focus:ring-purple-500 flex-shrink-0"
             />
-            <span>I confirm that I am authorised to connect and process this source for this project.</span>
+            <span className="leading-snug">I confirm that I am authorised to connect and process this source for this project.</span>
           </label>
           {uploadError && <p role="alert" className="text-xs font-semibold text-rose-500 dark:text-rose-400">{uploadError}</p>}
           <Button type="submit" disabled={!file || !consent || uploading} className="px-5 py-2.5 font-bold">
@@ -542,13 +542,13 @@ export function SourcesPage() {
           </Button>
         </form>
       ) : (
-        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/40 backdrop-blur-2xl p-5 text-xs text-slate-600 dark:text-gray-400 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/40 backdrop-blur-2xl p-4 sm:p-5 text-xs text-slate-600 dark:text-gray-400 shadow-sm">
           Only the project approver can connect new sources. You can inspect the sources available to your role below.
         </div>
       )}
 
       {user?.role === "approver" && (
-        <form onSubmit={handleCapture} className="space-y-4 rounded-2xl border border-purple-200 dark:border-purple-500/20 bg-purple-50/50 dark:bg-purple-950/10 p-6 shadow-sm">
+        <form onSubmit={handleCapture} className="space-y-4 rounded-2xl border border-purple-200 dark:border-purple-500/20 bg-purple-50/50 dark:bg-purple-950/10 p-4 sm:p-6 shadow-sm">
           <div>
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Capture a decision or handover note</h2>
             <p className="mt-1 text-xs text-slate-600 dark:text-gray-400">Notes are redacted, split into evidence chunks, and included in Baton’s normal source and verification workflow.</p>
@@ -578,7 +578,7 @@ export function SourcesPage() {
         </form>
       )}
 
-      <section className="space-y-3 rounded-2xl border border-amber-200 dark:border-amber-500/20 bg-amber-50/50 dark:bg-amber-950/10 p-5">
+      <section className="space-y-3 rounded-2xl border border-amber-200 dark:border-amber-500/20 bg-amber-50/50 dark:bg-amber-950/10 p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3">
           <div><h2 className="text-lg font-bold text-gray-900 dark:text-white">Source change alerts</h2><p className="text-xs text-slate-600 dark:text-gray-400">Re-import a source with the same name to compare its redacted evidence with the last scan.</p></div>
           <Button variant="quiet" onClick={() => void refetchDrift()}>Check changes</Button>
@@ -599,9 +599,9 @@ export function SourcesPage() {
 
       {/* Connected Sources Table */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Connected Sources Inventory</h2>
-          <Button variant="quiet" onClick={() => void refetch()}>
+          <Button variant="quiet" onClick={() => void refetch()} className="self-start sm:self-auto">
             Refresh
           </Button>
         </div>
