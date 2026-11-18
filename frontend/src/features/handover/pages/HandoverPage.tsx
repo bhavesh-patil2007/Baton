@@ -82,10 +82,10 @@ export function HandoverPage() {
     <div className="space-y-6 max-w-7xl mx-auto w-full pb-12 animate-in fade-in duration-300">
       {/* Header with High-Contrast Typography */}
       <header>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
           Handover for Campus Event Portal
         </h1>
-        <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-gray-300">
+        <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
           Version {version.version_id}, approved {version.approved_at ? new Date(version.approved_at).toLocaleDateString() : "recently"}
           {version.snapshot_hash ? `, snapshot ${version.snapshot_hash.replace("sha256:", "").slice(0, 10)}` : ""}.
           Every claim links to its source quote.
@@ -109,7 +109,7 @@ export function HandoverPage() {
             className={`pb-3 -mb-px transition cursor-pointer font-bold ${
               tab === t
                 ? "border-b-2 border-indigo-600 text-indigo-700 dark:text-white dark:border-indigo-500 shadow-[0_4px_12px_rgba(99,102,241,0.25)]"
-                : "border-b-2 border-transparent text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200"
+                : "border-b-2 border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
             }`}
           >
             {t === "handover" ? "Handover Package" : "Day 1, Week 1, Month 1 Action Plan"}
@@ -138,7 +138,7 @@ export function HandoverPage() {
               onOpenCitation={setCitation}
             />
           ))}
-          <p className="text-xs text-gray-400 font-mono">{view.data.receipt_note}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{view.data.receipt_note}</p>
         </div>
       )}
 
@@ -167,7 +167,7 @@ export function HandoverPage() {
               await deleteTaskMutation.mutateAsync(taskId);
             }}
           />
-          {plan.data && <p className="mt-6 text-xs text-gray-400 font-mono">{plan.data.note}</p>}
+          {plan.data && <p className="mt-6 text-xs text-slate-500 dark:text-slate-400 font-mono">{plan.data.note}</p>}
         </div>
       )}
 

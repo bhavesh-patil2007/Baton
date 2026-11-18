@@ -9,7 +9,14 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core import acl, audit
-from app.core.auth import DEMO_PROJECT_ID, User, current_user, make_token, verify_supabase_token
+from app.core.auth import (
+    DEMO_PROJECT_ID,
+    User,
+    current_user,
+    make_token,
+    record_identity_mapping,
+    verify_supabase_token,
+)
 from app.core.db import get_session
 from app.core.demo import seed_demo
 from app.core.registry import reset_hooks
@@ -161,6 +168,15 @@ def register(
                 )
 
         member_id = uid
+        # Ensure workspace project row exists
+        session.execute(
+            text(
+                "insert into projects (id, name, created_at) "
+                "values (:id, :name, :created_at) "
+                "on conflict (id) do nothing"
+            ),
+            {"id": body.project_id, "name": f"{name_clean}'s Workspace", "created_at": audit.now_iso()},
+        )
         try:
             session.execute(
                 text("insert into members (id, project_id, name, role, active, email, is_demo) values (:id, :project_id, :name, :role, 1, :email, 0)"),
@@ -191,6 +207,15 @@ def register(
         project_id=body.project_id,
         email=email_clean,
         is_demo=False,
+    )
+    # Additive mapping from Supabase sub to member, project, and role
+    record_identity_mapping(
+        session=session,
+        supabase_sub=uid,
+        member_id=user.id,
+        project_id=user.project_id,
+        role=user.role,
+        email=user.email,
     )
     audit.log(session, user, "auth.register", obj=user.id, detail=f"Registered as {user.role}")
     return {"token": make_token(user), "user": user.__dict__}
@@ -242,6 +267,15 @@ def sync_session(
         project_id=row["project_id"],
         email=email_val,
         is_demo=is_demo_val,
+    )
+    # Additive mapping from Supabase sub to member, project, and role
+    record_identity_mapping(
+        session=session,
+        supabase_sub=uid,
+        member_id=user.id,
+        project_id=user.project_id,
+        role=user.role,
+        email=user.email,
     )
     try:
         audit.log(session, user, "auth.session_sync", obj=user.id)
