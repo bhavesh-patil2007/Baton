@@ -130,8 +130,8 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     // -----------------------------------------------------------------------
     // Step 6: Switch to Incoming Contributor & verify restricted items hidden
     // -----------------------------------------------------------------------
-    await switchRole(page, request, "incoming_contributor");
-    await page.goto("/review");
+    await loginAsRole(page, request, "incoming_contributor", "/dashboard");
+    await page.getByRole("link", { name: /Review/i }).first().click();
 
     // On Review page, Incoming Contributor sees Read-Only banner
     await expect(page.getByText("Read-Only View").first()).toBeVisible();
