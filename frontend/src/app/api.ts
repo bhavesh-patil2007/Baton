@@ -30,15 +30,38 @@ export function setToken(token: string | null): void {
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const token = getToken();
   let response: Response;
+  const url = `${BASE}${path}`;
+  const isBodyAllowed = init.method && !["GET", "HEAD"].includes(init.method.toUpperCase());
+  const requestHeaders: Record<string, string> = {
+    Accept: "application/json",
+    ...(isBodyAllowed && init.body !== undefined ? { "Content-Type": "application/json" } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
   try {
-    response = await fetch(`${BASE}${path}`, {
-      method: init.method ?? "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    });
+    try {
+      response = await fetch(url, {
+        method: init.method ?? "GET",
+        headers: requestHeaders,
+        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      });
+    } catch (primaryErr) {
+      let altUrl: string | null = null;
+      if (url.includes("//localhost:8000")) {
+        altUrl = url.replace("//localhost:8000", "//127.0.0.1:8000");
+      } else if (url.includes("//127.0.0.1:8000")) {
+        altUrl = url.replace("//127.0.0.1:8000", "//localhost:8000");
+      }
+      if (altUrl) {
+        response = await fetch(altUrl, {
+          method: init.method ?? "GET",
+          headers: requestHeaders,
+          body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        });
+      } else {
+        throw primaryErr;
+      }
+    }
   } catch {
     throw new ApiError(0, "Cannot reach the Baton API. If it was idle it may still be waking up: wait a few seconds and try again.");
   }

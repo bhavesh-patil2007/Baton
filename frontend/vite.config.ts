@@ -6,8 +6,21 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: {
+    host: true,
     headers: {
       "Cache-Control": "no-store, no-cache, must-revalidate",
+    },
+    proxy: {
+      "/health": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/auth": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/me": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/claims": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/review": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/risk-radar": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/timeline": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/delivery-status": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/gaps": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/demo": { target: "http://127.0.0.1:8000", changeOrigin: true },
     },
   },
   build: {

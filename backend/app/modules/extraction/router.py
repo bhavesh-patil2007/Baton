@@ -9,6 +9,8 @@ router = APIRouter(tags=["extraction"])
 
 @router.post("/reconstruct")
 def reconstruct(user: User = Depends(current_user)):
+    if user.role != "approver":
+        raise HTTPException(status_code=403, detail="Only the project approver can trigger reconstruction.")
     return public.start_reconstruct(user.project_id)
 
 

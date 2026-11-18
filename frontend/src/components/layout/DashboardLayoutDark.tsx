@@ -32,7 +32,7 @@ import {
   Download,
   X,
 } from "lucide-react";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth, formatUserDropdownRole } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { batonApi } from "../../api/client";
 import { isSupabaseConfigured } from "../../features/auth/supabase";
@@ -113,18 +113,30 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
     return trimmed.slice(0, 2).toUpperCase();
   }, [user]);
 
-  const navItems = [
-    { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-    { name: "Add Source", path: "/sources", icon: Plus },
-    { name: "Claim Ledger", path: "/ledger", icon: FileText },
-    { name: "Knowledge Graph", path: "/graph", icon: Share2 },
-    { name: "Risk Radar", path: "/risk", icon: Compass },
-    { name: "Review Queue", path: "/review", badge: pendingReviewCount, icon: CheckSquare },
-    { name: "Export Plan", path: "/handover", icon: Download },
-    { name: "Access Control", path: "/access", icon: ShieldCheck },
-    { name: "Audit Logs", path: "/audit", icon: History },
-    { name: "Settings", path: "/settings", icon: Settings },
-  ];
+  const roleNavAllowed: Record<string, string[]> = {
+    approver: ["/dashboard", "/sources", "/ledger", "/graph", "/risk", "/review", "/handover", "/access", "/audit", "/settings"],
+    leaver: ["/dashboard", "/ledger", "/graph", "/risk", "/audit", "/settings"],
+    incoming_maintainer: ["/dashboard", "/ledger", "/graph", "/risk", "/handover", "/settings"],
+    incoming_contributor: ["/dashboard", "/ledger", "/graph", "/handover", "/settings"],
+  };
+
+  const navItems = useMemo(() => {
+    const all = [
+      { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+      { name: "Add Source", path: "/sources", icon: Plus },
+      { name: "Claim Ledger", path: "/ledger", icon: FileText },
+      { name: "Knowledge Graph", path: "/graph", icon: Share2 },
+      { name: "Risk Radar", path: "/risk", icon: Compass },
+      { name: "Review Queue", path: "/review", badge: pendingReviewCount, icon: CheckSquare },
+      { name: "Export Plan", path: "/handover", icon: Download },
+      { name: "Access Control", path: "/access", icon: ShieldCheck },
+      { name: "Audit Logs", path: "/audit", icon: History },
+      { name: "Settings", path: "/settings", icon: Settings },
+    ];
+    if (!user?.role) return all;
+    const allowed = roleNavAllowed[user.role] || roleNavAllowed.approver;
+    return all.filter((item) => allowed.includes(item.path));
+  }, [user?.role, pendingReviewCount]);
 
   return (
     <div className="min-h-screen flex bg-transparent text-white font-sans selection:bg-purple-500 selection:text-white relative overflow-x-hidden">
@@ -269,7 +281,7 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
               showLabels ? "p-2.5 justify-between" : "p-2 justify-center"
             }`}
             aria-expanded={profileDropdownOpen}
-            title={user ? `${user.name} (${user.displayRole || user.role})` : "User Profile"}
+            title={user ? formatUserDropdownRole(user) : "User Profile"}
           >
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative flex-shrink-0">
@@ -320,40 +332,62 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
                 showLabels ? "left-3 right-3" : "left-20 w-64"
               }`}
             >
-              <div className="px-3 py-2 border-b border-white/10">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-purple-400">
-                  Switch Active Role
-                </p>
-                <p className="text-gray-400 text-[11px] truncate">{user?.email}</p>
-              </div>
+              {user?.is_demo ? (
+                <>
+                  <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-purple-400">
+                        Switch Active Role
+                      </p>
+                      <p className="text-gray-400 text-[11px] truncate">Demo Account</p>
+                    </div>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-500/30">
+                      Demo
+                    </span>
+                  </div>
 
-              <div className="py-1 space-y-0.5">
-                {(
-                  [
-                    { role: "approver", name: "Approver (Engineering Lead)" },
-                    { role: "leaver", name: "Leaver (Aarav)" },
-                    { role: "incoming_maintainer", name: "Incoming Maintainer (Meera)" },
-                    { role: "incoming_contributor", name: "Incoming Contributor" },
-                  ] as const
-                ).map(({ role, name }) => (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={async () => {
-                      await switchRole(role);
-                      setProfileDropdownOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-colors ${
-                      user?.role === role
-                        ? "bg-purple-950/60 text-purple-300 font-semibold"
-                        : "text-gray-300 hover:bg-white/10"
-                    }`}
-                  >
-                    <span>{name}</span>
-                    {user?.role === role && <span className="text-purple-400 font-bold">✓</span>}
-                  </button>
-                ))}
-              </div>
+                  <div className="py-1 space-y-0.5">
+                    {(
+                      [
+                        { role: "approver", name: "Approver (Engineering Lead)" },
+                        { role: "leaver", name: "Aarav (Departing Lead)" },
+                        { role: "incoming_maintainer", name: "Meera (Incoming Maintainer)" },
+                        { role: "incoming_contributor", name: "Incoming Contributor" },
+                      ] as const
+                    ).map(({ role, name }) => (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={async () => {
+                          await switchRole(role);
+                          setProfileDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-colors ${
+                          user?.role === role
+                            ? "bg-purple-950/60 text-purple-300 font-semibold"
+                            : "text-gray-300 hover:bg-white/10"
+                        }`}
+                      >
+                        <span>{name}</span>
+                        {user?.role === role && <span className="text-purple-400 font-bold">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="px-3 py-2.5 border-b border-white/10">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      Assigned Role
+                    </p>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-500/30">
+                      Verified
+                    </span>
+                  </div>
+                  <p className="text-sm font-bold text-white mt-0.5">{formatUserDropdownRole(user)}</p>
+                  <p className="text-gray-400 text-[11px] truncate mt-0.5">{user?.email}</p>
+                </div>
+              )}
 
               {isSupabaseConfigured && (
                 <button

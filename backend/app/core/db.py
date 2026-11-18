@@ -40,6 +40,17 @@ def apply_schema(engine: Engine | None = None) -> list[str]:
             for statement in _statements(path.read_text(encoding="utf-8")):
                 conn.exec_driver_sql(statement)
         applied.append(path.name)
+    # Ensure backward compatibility for existing databases where members already existed
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql("alter table members add column email text")
+    except Exception:
+        pass
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql("alter table members add column is_demo integer not null default 0")
+    except Exception:
+        pass
     return applied
 
 
