@@ -78,7 +78,28 @@ export function AuditTrailModal({ onClose }: AuditTrailModalProps) {
                   </span>
                 </div>
 
-                {entry.detail && Object.keys(entry.detail).length > 0 && (
+                {entry.event_type.startsWith("review.") && entry.detail.before && (
+                  <div className="mt-2 space-y-2 rounded bg-card p-2 text-[11px] text-muted">
+                    <p><span className="font-semibold text-ink">Decision:</span> {String(entry.detail.action ?? entry.event_type.slice("review.".length))}</p>
+                    <p><span className="font-semibold text-ink">Rationale:</span> {String(entry.detail.rationale || "Not provided")}</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div><span className="font-semibold text-ink">Prior state:</span> <pre className="mt-1 whitespace-pre-wrap font-mono">{JSON.stringify(entry.detail.before, null, 2)}</pre></div>
+                      <div><span className="font-semibold text-ink">New state:</span> <pre className="mt-1 whitespace-pre-wrap font-mono">{JSON.stringify(entry.detail.after, null, 2)}</pre></div>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-ink">Linked evidence:</span>
+                      {Array.isArray(entry.detail.evidence) && entry.detail.evidence.length > 0 ? (
+                        <ul className="mt-1 list-inside list-disc font-mono">
+                          {entry.detail.evidence.map((evidence, index) => {
+                            const item = evidence as Record<string, unknown>;
+                            return <li key={`${String(item.chunk_id)}-${index}`}>{String(item.chunk_id)}{item.source_id ? ` · ${String(item.source_id)}` : ""}{item.source_title ? ` · ${String(item.source_title)}` : ""}</li>;
+                          })}
+                        </ul>
+                      ) : <span> None recorded.</span>}
+                    </div>
+                  </div>
+                )}
+                {entry.detail && Object.keys(entry.detail).length > 0 && !entry.detail.before && (
                   <div className="mt-1 rounded bg-card p-2 text-[11px] font-mono text-muted overflow-x-auto">
                     {JSON.stringify(entry.detail, null, 2)}
                   </div>

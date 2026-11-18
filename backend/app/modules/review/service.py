@@ -100,6 +100,24 @@ def _brief(c: Claim) -> dict:
     return {"statement": c.statement, "state": c.state, "review_state": c.review_state}
 
 
+def _decision_evidence(ctx: Ctx, claim_id: str) -> list[dict[str, str | None]]:
+    claim = ctx.claims.get_claim(ctx.project_id, claim_id)
+    if claim is None:
+        return []
+    refs = []
+    for evidence in claim.evidence:
+        label = (evidence.acl_label or claim.acl_label or "").upper()
+        if label not in ctx.labels or label == NEVER_VISIBLE_LABEL:
+            continue
+        refs.append({
+            "chunk_id": evidence.chunk_id,
+            "source_id": evidence.source_id,
+            "source_title": evidence.source_title,
+            "event_time": evidence.event_time,
+        })
+    return refs
+
+
 def _record(
     ctx: Ctx, claim_id: str, action: ReviewAction, note: str | None, before: dict, after: dict
 ) -> Review:
@@ -121,7 +139,15 @@ def _record(
         f"review.{action.value}",
         "claim",
         claim_id,
-        {"review_id": row.id, "note": note},
+        {
+            "review_id": row.id,
+            "action": action.value,
+            "note": note,
+            "rationale": note,
+            "before": before,
+            "after": after,
+            "evidence": _decision_evidence(ctx, claim_id),
+        },
     )
     return row
 

@@ -1,4 +1,6 @@
 """Review actions and their refusal rules."""
+import pytest
+
 from .conftest import H
 
 
@@ -105,6 +107,86 @@ def test_every_action_appears_in_audit_trail(act, client):
     act("c-readme", "reject")
     types = [e["event_type"] for e in client.get("/audit", headers=H()).json()]
     assert "review.confirm" in types and "review.reject" in types
+
+
+def test_decision_history_persists_rationale_states_and_linked_evidence(act, client):
+    decisions = [
+        ("c-test", "confirm", {"note": "Verified against the release notes."}),
+        ("c-readme", "edit", {
+            "edited_statement": "Use PostgreSQL", "note": "Normalized product name."
+        }),
+        ("c-friday", "reject", {"note": "The report is no longer current."}),
+        ("c-domain", "mark_unknown", {"note": "No source identifies an owner."}),
+        ("c-pay-A", "resolve_conflict", {
+            "chosen_claim_id": "c-pay-B", "note": "The later handover note is authoritative."
+        }),
+    ]
+    for claim_id, action, fields in decisions:
+        assert act(claim_id, action, **fields).status_code == 200
+
+    # A fresh GET reloads the persisted events from the database session.
+    events = client.get("/audit", headers=H()).json()
+    for claim_id, action, fields in decisions:
+        event_claim_id = (
+            fields["chosen_claim_id"] if action == "resolve_conflict" else claim_id
+        )
+        event = next(e for e in events if e["event_type"] == f"review.{action}"
+                     and e["object_id"] == event_claim_id)
+        assert event["actor_id"] == "approver-u"
+        assert event["actor_role"] == "approver"
+        assert event["created_at"]
+        assert event["detail"]["action"] == action
+        assert event["detail"]["rationale"] == fields["note"]
+        assert event["detail"]["before"]
+        assert event["detail"]["after"]
+        assert isinstance(event["detail"]["evidence"], list)
+    confirmed = next(e for e in events if e["event_type"] == "review.confirm")
+    assert confirmed["detail"]["before"]["state"] == "Verified"
+    assert confirmed["detail"]["after"]["state"] == "Verified"
+    assert confirmed["detail"]["evidence"] == [
+        {"chunk_id": "S4-14", "source_id": None, "source_title": None, "event_time": None}
+    ]
+    edited = next(e for e in events if e["event_type"] == "review.edit")
+    assert edited["detail"]["before"]["statement"] == "Use Postgres"
+    assert edited["detail"]["after"]["statement"] == "Use PostgreSQL"
+
+
+def test_decision_history_never_exposes_restricted_evidence(act, client, fake):
+    from dataclasses import replace
+
+    claim = fake.get_claim("p1", "c-test")
+    fake.claims[("p1", "c-test")] = replace(
+        claim, evidence=claim.evidence + (
+            type(claim.evidence[0])("secret-chunk", "restricted quote", acl_label="L4"),
+        )
+    )
+    assert act("c-test", "confirm", note="safe rationale").status_code == 200
+    response = client.get("/audit", headers=H())
+    assert response.status_code == 200
+    event = next(e for e in response.json() if e["event_type"] == "review.confirm")
+    assert [e["chunk_id"] for e in event["detail"]["evidence"]] == ["S4-14"]
+    assert "secret-chunk" not in response.text and "restricted quote" not in response.text
+
+
+def test_review_events_are_immutable(act, Session):
+    from app.modules.review.errors import ImmutableError
+    from app.modules.review.models import ReviewEvent
+
+    assert act("c-test", "confirm", note="keep this decision").status_code == 200
+    session = Session()
+    try:
+        event = session.query(ReviewEvent).one()
+        event.detail_json = "{}"
+        with pytest.raises(ImmutableError):
+            session.flush()
+        session.rollback()
+
+        event = session.query(ReviewEvent).one()
+        session.delete(event)
+        with pytest.raises(ImmutableError):
+            session.flush()
+    finally:
+        session.close()
 
 
 def test_unknown_action_and_extra_fields_rejected(client):
