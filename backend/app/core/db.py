@@ -91,6 +91,21 @@ def apply_schema(engine: Engine | None = None) -> list[str]:
             conn.exec_driver_sql("alter table members add column is_demo integer not null default 0")
     except Exception:
         pass
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql(
+                "create table if not exists identity_mappings ("
+                "  supabase_sub text primary key,"
+                "  member_id text not null,"
+                "  project_id text not null,"
+                "  role text not null check (role in ('approver', 'leaver', 'incoming_maintainer', 'incoming_contributor')),"
+                "  email text,"
+                "  created_at text not null,"
+                "  updated_at text not null"
+                ")"
+            )
+    except Exception:
+        pass
     return applied
 
 

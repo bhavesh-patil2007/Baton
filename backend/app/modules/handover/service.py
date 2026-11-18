@@ -686,10 +686,10 @@ def get_task_history(session: Session, user: User, version_id: str, task_id: str
         text("""
             select id, version_id, project_id, task_id, actor_id, actor_name, action, field, old_value, new_value, created_at
             from activity_history
-            where version_id = :v and task_id = :t
+            where version_id = :v and task_id = :t and project_id = :p
             order by created_at asc
         """),
-        {"v": version_id, "t": task_id},
+        {"v": version_id, "t": task_id, "p": user.project_id},
     ).mappings().all()
 
     return {

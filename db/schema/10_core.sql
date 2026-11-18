@@ -31,6 +31,19 @@ create table if not exists invitations (
 
 create index if not exists idx_invitations_code on invitations (code);
 
+create table if not exists identity_mappings (
+  supabase_sub text primary key,
+  member_id text not null,
+  project_id text not null,
+  role text not null check (role in ('approver', 'leaver', 'incoming_maintainer', 'incoming_contributor')),
+  email text,
+  created_at text not null,
+  updated_at text not null
+);
+
+create index if not exists idx_identity_mappings_member on identity_mappings (member_id);
+create index if not exists idx_identity_mappings_project on identity_mappings (project_id);
+
 create table if not exists audit_log (
   id text primary key,
   project_id text,

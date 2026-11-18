@@ -38,6 +38,7 @@ import { batonApi } from "../../api/client";
 import { isSupabaseConfigured } from "../../features/auth/supabase";
 import { linkGithubIdentity } from "../../features/auth/linkGithubIdentity";
 import { ProjectSwitcher } from "./ProjectSwitcher";
+import { ConfirmModal } from "../../shared/ui";
 
 interface DashboardLayoutLightProps {
   children?: ReactNode;
@@ -61,6 +62,8 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [latencyMs, setLatencyMs] = useState<number>(42);
   const [isConnected, setIsConnected] = useState<boolean>(true);
+  const [isResetModalOpen, setIsResetModalOpen] = useState<boolean>(false);
+  const [resetting, setResetting] = useState<boolean>(false);
 
   // Monitor live backend connection telemetry
   useEffect(() => {
@@ -102,6 +105,28 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Dynamic Document Title based on active page route
+  useEffect(() => {
+    const titleMap: Record<string, string> = {
+      "/": "Dashboard | Baton",
+      "/dashboard": "Dashboard | Baton",
+      "/sources": "Sources | Baton",
+      "/ledger": "Claim Ledger | Baton",
+      "/graph": "Knowledge Graph | Baton",
+      "/risk": "Risk Radar | Baton",
+      "/review": "Review Queue | Baton",
+      "/handover": "Handover | Baton",
+      "/access": "Access Control | Baton",
+      "/audit": "Audit Logs | Baton",
+      "/settings": "Settings | Baton",
+      "/ask": "Ask Baton | Baton",
+    };
+    document.title = titleMap[location.pathname] || "Baton";
+  }, [location.pathname]);
+
+  const isMac = typeof navigator !== "undefined" && /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform || navigator.userAgent);
+  const searchShortcut = isMac ? "⌘ K" : "Ctrl K";
+
   // Dynamically extract initials from active user (NO HARDCODING)
   const userInitials = useMemo(() => {
     if (!user?.name) return "";
@@ -116,20 +141,20 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
 
   const roleNavAllowed: Record<string, string[]> = {
     approver: ["/dashboard", "/sources", "/ledger", "/graph", "/risk", "/review", "/handover", "/access", "/audit", "/settings"],
-    leaver: ["/dashboard", "/ledger", "/graph", "/risk", "/audit", "/settings"],
-    incoming_maintainer: ["/dashboard", "/ledger", "/graph", "/risk", "/handover", "/settings"],
-    incoming_contributor: ["/dashboard", "/ledger", "/graph", "/handover", "/settings"],
+    leaver: ["/dashboard", "/ledger", "/graph", "/risk", "/review", "/audit", "/settings"],
+    incoming_maintainer: ["/dashboard", "/ledger", "/graph", "/risk", "/review", "/handover", "/settings"],
+    incoming_contributor: ["/dashboard", "/ledger", "/graph", "/review", "/handover", "/settings"],
   };
 
   const navItems = useMemo(() => {
     const all = [
       { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-      { name: "Add Source", path: "/sources", icon: Plus },
+      { name: "Sources", path: "/sources", icon: Plus },
       { name: "Claim Ledger", path: "/ledger", icon: FileText },
       { name: "Knowledge Graph", path: "/graph", icon: Share2 },
       { name: "Risk Radar", path: "/risk", icon: Compass },
       { name: "Review Queue", path: "/review", badge: pendingReviewCount, icon: CheckSquare },
-      { name: "Export Plan", path: "/handover", icon: Download },
+      { name: "Handover", path: "/handover", icon: Download },
       { name: "Access Control", path: "/access", icon: ShieldCheck },
       { name: "Audit Logs", path: "/audit", icon: History },
       { name: "Settings", path: "/settings", icon: Settings },
@@ -141,6 +166,13 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
 
   return (
     <div className="min-h-screen flex bg-[#f8fafc] text-slate-900 font-sans selection:bg-purple-500 selection:text-white relative overflow-x-hidden">
+      {/* Hidden Skip to main content link for screen readers */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-purple-600 focus:text-white focus:rounded-xl focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-purple-700 active:scale-[0.98] transition-all duration-150"
+      >
+        Skip to main content
+      </a>
       {/* Background Soft Pastel Ambient Glows */}
       <div className="fixed top-[-10%] right-[-5%] w-[600px] h-[600px] bg-purple-100/40 rounded-full blur-[140px] pointer-events-none" />
       <div className="fixed bottom-[-10%] left-[-5%] w-[550px] h-[550px] bg-indigo-100/40 rounded-full blur-[140px] pointer-events-none" />
@@ -184,7 +216,7 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
               to="/dashboard"
               onClick={() => setMobileMenuOpen(false)}
               className="flex items-center gap-3 px-3 py-3 focus:outline-none transition-all duration-200"
-              title="Baton - Know. Verify. Handover."
+              aria-label="Baton Dashboard"
             >
               <img
                 src="/assets/baton-logo.png"
@@ -225,9 +257,9 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
                 <Link
                   key={item.name}
                   to={item.path}
-                  title={item.name}
+                  aria-label={item.name}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`group relative flex items-center transition-all duration-200 ${
+                  className={`group relative flex items-center transition-all duration-200 active:scale-[0.98] ${
                     showLabels
                       ? "px-3.5 py-2.5 rounded-xl gap-3"
                       : "w-11 h-11 mx-auto justify-center rounded-xl"
@@ -409,13 +441,11 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
               <div className="pt-1.5 mt-1 border-t border-slate-100 flex items-center justify-between px-1">
                 <button
                   type="button"
-                  onClick={async () => {
-                    if (window.confirm("Restore sample demo project data in backend?")) {
-                      await resetDemo();
-                      setProfileDropdownOpen(false);
-                    }
+                  onClick={() => {
+                    setProfileDropdownOpen(false);
+                    setIsResetModalOpen(true);
                   }}
-                  className="text-slate-500 hover:text-purple-700 font-medium px-2 py-1 rounded hover:bg-purple-50 transition-colors"
+                  className="text-slate-500 hover:text-purple-700 font-medium px-2 py-1 rounded hover:bg-purple-50 active:scale-[0.98] transition-all duration-150 cursor-pointer"
                 >
                   Reset Demo
                 </button>
@@ -471,7 +501,7 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
                 Search...
               </span>
               <kbd className="ml-auto hidden md:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-semibold text-slate-500 bg-white rounded border border-slate-200 shadow-xs">
-                ⌘ K
+                {searchShortcut}
               </kbd>
             </div>
           </div>
@@ -562,7 +592,7 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
         </header>
 
         {/* Dynamic Main Page Content */}
-        <main className="flex-1 p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8 max-w-[1600px] w-full mx-auto min-w-0">{children}</main>
+        <main id="main-content" className="flex-1 p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8 max-w-[1600px] w-full mx-auto min-w-0">{children}</main>
 
         {/* Mobile Persistent Bottom Navigation Bar */}
         <nav
@@ -645,7 +675,7 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
               <button
                 type="button"
                 onClick={() => setSearchModalOpen(false)}
-                className="text-xs text-slate-500 hover:text-slate-800 px-2 py-1 rounded bg-slate-100"
+                className="text-xs text-slate-500 hover:text-slate-800 px-2 py-1 rounded bg-slate-100 active:scale-[0.98] transition-all duration-150 cursor-pointer"
               >
                 ESC
               </button>
@@ -663,7 +693,7 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
                 className="p-2.5 rounded-xl hover:bg-purple-50 cursor-pointer flex items-center justify-between border border-transparent hover:border-purple-200 transition-colors"
               >
                 <div>
-                  <p className="font-semibold text-slate-900">Add Source</p>
+                  <p className="font-semibold text-slate-900">Sources</p>
                   <p className="text-slate-500 text-[11px]">Connect GitHub, Jira, Slack & Confluence</p>
                 </div>
                 <span className="text-[10px] font-bold text-purple-600">Connect →</span>
@@ -702,7 +732,7 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
                 className="p-2.5 rounded-xl hover:bg-purple-50 cursor-pointer flex items-center justify-between border border-transparent hover:border-purple-200 transition-colors"
               >
                 <div>
-                  <p className="font-semibold text-slate-900">Export Plan</p>
+                  <p className="font-semibold text-slate-900">Handover</p>
                   <p className="text-slate-500 text-[11px]">Download verified handover package & checklist</p>
                 </div>
                 <span className="text-[10px] font-bold text-purple-600">Export →</span>
@@ -711,6 +741,26 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal for Reset Demo */}
+      <ConfirmModal
+        isOpen={isResetModalOpen}
+        title="Reset Demo Data"
+        message="Restore sample demo project data in backend? This will reinitialize claims, sources, and review tasks."
+        confirmLabel={resetting ? "Resetting..." : "Reset Data"}
+        confirmVariant="danger"
+        isLoading={resetting}
+        onConfirm={async () => {
+          setResetting(true);
+          try {
+            await resetDemo();
+          } finally {
+            setResetting(false);
+            setIsResetModalOpen(false);
+          }
+        }}
+        onCancel={() => setIsResetModalOpen(false)}
+      />
     </div>
   );
 };

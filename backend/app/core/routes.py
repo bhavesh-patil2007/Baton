@@ -18,6 +18,7 @@ from app.core.auth import (
     current_user,
     make_account_token,
     make_token,
+    record_identity_mapping,
     verify_supabase_token,
 )
 from app.core.db import get_session
@@ -257,7 +258,7 @@ def register(
                 if inv_row["email"] and inv_row["email"].lower() != email_clean:
                     raise HTTPException(status_code=403, detail="Invitation code was issued to a different email address.")
                 approved = True
-                if inv_row.get("project_id"):
+                if inv_row.get("project_id") and not body.project_id:
                     target_project_id = inv_row["project_id"]
                 session.execute(
                     text("update invitations set status = 'used', used_by = :uid, used_at = :now where id = :id"),
@@ -275,7 +276,7 @@ def register(
             ).mappings().first()
             if admin_appr:
                 approved = True
-                if admin_appr.get("project_id"):
+                if admin_appr.get("project_id") and not body.project_id:
                     target_project_id = admin_appr["project_id"]
                 session.execute(
                     text("update invitations set status = 'used', used_by = :uid, used_at = :now where id = :id"),
@@ -287,6 +288,16 @@ def register(
                 status_code=403,
                 detail="Approver registration requires a valid invitation code or admin approval.",
             )
+
+    # Ensure workspace project row exists
+    session.execute(
+        text(
+            "insert into projects (id, name, created_at) "
+            "values (:id, :name, :created_at) "
+            "on conflict (id) do nothing"
+        ),
+        {"id": target_project_id, "name": f"{name_clean}'s Workspace", "created_at": audit.now_iso()},
+    )
 
     # Ensure canonical users table has user
     now = audit.now_iso()
@@ -326,6 +337,15 @@ def register(
         project_id=target_project_id,
         email=email_clean,
         is_demo=False,
+    )
+    # Additive mapping from Supabase sub to member, project, and role
+    record_identity_mapping(
+        session=session,
+        supabase_sub=uid,
+        member_id=user.id,
+        project_id=user.project_id,
+        role=user.role,
+        email=user.email,
     )
     audit.log(session, user, "auth.register", obj=user.id, detail=f"Registered as {user.role} for project {target_project_id}")
     return {"token": make_token(user), "user": user.__dict__}
@@ -456,6 +476,15 @@ def sync_session(
         project_id=active_row["id"],
         email=email_clean,
         is_demo=False,
+    )
+    # Additive mapping from Supabase sub to member, project, and role
+    record_identity_mapping(
+        session=session,
+        supabase_sub=uid,
+        member_id=user.id,
+        project_id=user.project_id,
+        role=user.role,
+        email=user.email,
     )
     try:
         audit.log(session, user, "auth.session_sync", obj=user.id)

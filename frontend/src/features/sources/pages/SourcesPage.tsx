@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, getToken } from "@/app/api";
 import { useAuth } from "@/app/auth";
@@ -87,7 +87,6 @@ async function uploadSource(file: File, consent: boolean, aclLabel: string): Pro
 
 export function SourcesPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
@@ -349,26 +348,14 @@ export function SourcesPage() {
 
   return (
     <section className="space-y-6 sm:space-y-8 max-w-7xl mx-auto w-full pb-12 animate-in fade-in duration-300 min-w-0">
-      {/* Header with Back Navigation and High-Contrast Typography */}
-      <div className="flex items-start sm:items-center gap-3 sm:gap-4">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="p-2 sm:p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 shadow-sm transition-all dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10 cursor-pointer flex-shrink-0 mt-0.5 sm:mt-0"
-          aria-label="Go back"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-        </button>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-            Connect Sources
-          </h1>
-          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-gray-300 leading-normal">
-            Import authorised project records. Per-connection grants are encrypted at rest with Fernet symmetric keys.
-          </p>
-        </div>
+      {/* Header with High-Contrast Typography */}
+      <div>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+          Connect Sources
+        </h1>
+        <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-gray-300 leading-normal">
+          Import authorised project records. Per-connection grants are encrypted at rest with Fernet symmetric keys.
+        </p>
       </div>
 
       {/* OAuth Feedback Banner */}
@@ -616,31 +603,31 @@ export function SourcesPage() {
           aria-modal="true"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in"
         >
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121424] p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121424] p-6 shadow-xl shadow-black/40 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-white/10 pb-3">
               <h3 className="font-bold text-base text-slate-900 dark:text-white">Connect Project Source</h3>
               <button
                 type="button"
                 onClick={() => setIsConnectOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-gray-200 text-sm font-bold"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-gray-200 text-sm font-bold active:scale-[0.98] transition-all duration-150 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
             <form onSubmit={handleOAuthSubmit} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300 mb-1.5">
+              <div className="space-y-1.5">
+                <label className="block font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300">
                   Provider
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setConnectProvider("github")}
-                    className={`py-2 px-3 rounded-xl border text-center font-bold transition ${
+                    className={`py-2 px-3 rounded-xl border text-center font-bold active:scale-[0.98] transition-all duration-150 cursor-pointer ${
                       connectProvider === "github"
                         ? "border-indigo-600 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-500"
-                        : "border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300"
+                        : "border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/5"
                     }`}
                   >
                     GitHub App
@@ -648,10 +635,10 @@ export function SourcesPage() {
                   <button
                     type="button"
                     onClick={() => setConnectProvider("jira")}
-                    className={`py-2 px-3 rounded-xl border text-center font-bold transition ${
+                    className={`py-2 px-3 rounded-xl border text-center font-bold active:scale-[0.98] transition-all duration-150 cursor-pointer ${
                       connectProvider === "jira"
                         ? "border-indigo-600 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-500"
-                        : "border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300"
+                        : "border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/5"
                     }`}
                   >
                     Jira Cloud (3LO)
@@ -659,8 +646,8 @@ export function SourcesPage() {
                 </div>
               </div>
 
-              <div>
-                <label htmlFor="connect-target" className="block font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300 mb-1.5">
+              <div className="space-y-1.5">
+                <label htmlFor="connect-target" className="block font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300">
                   {connectProvider === "github" ? "GitHub Repository (owner/repo)" : "Jira Project Key"}
                 </label>
                 <input
@@ -670,19 +657,19 @@ export function SourcesPage() {
                   placeholder={connectProvider === "github" ? "acme-corp/project-repo" : "CAMPUS"}
                   value={connectTarget}
                   onChange={(e) => setConnectTarget(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/50 p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:border-indigo-500"
+                  className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/50 p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 focus:outline-none transition-all"
                 />
               </div>
 
-              <div>
-                <label htmlFor="connect-acl" className="block font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300 mb-1.5">
+              <div className="space-y-1.5">
+                <label htmlFor="connect-acl" className="block font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300">
                   Access Classification
                 </label>
                 <select
                   id="connect-acl"
                   value={connectAcl}
                   onChange={(e) => setConnectAcl(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/50 p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/50 p-2.5 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 focus:outline-none transition-all"
                 >
                   <option value="L1">L1 — Team-wide (Public to project)</option>
                   <option value="L2">L2 — Maintainers Only</option>
@@ -812,13 +799,13 @@ export function SourcesPage() {
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Capture a decision or handover note</h2>
             <p className="mt-1 text-xs text-slate-600 dark:text-gray-400">Notes are redacted, split into evidence chunks, and included in Baton’s normal source and verification workflow.</p>
           </div>
-          <div>
+          <div className="space-y-1.5">
             <label htmlFor="capture-title" className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300">Title</label>
-            <input id="capture-title" value={captureTitle} onChange={(event) => setCaptureTitle(event.target.value)} minLength={3} maxLength={120} required className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-black/40 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white" placeholder="e.g. Retry worker decision" />
+            <input id="capture-title" value={captureTitle} onChange={(event) => setCaptureTitle(event.target.value)} minLength={3} maxLength={120} required className="w-full rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-slate-900/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 focus:outline-none transition-all" placeholder="e.g. Retry worker decision" />
           </div>
-          <div>
+          <div className="space-y-1.5">
             <label htmlFor="capture-body" className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300">What should the next team know?</label>
-            <textarea id="capture-body" value={captureBody} onChange={(event) => setCaptureBody(event.target.value)} minLength={10} maxLength={8000} required rows={5} className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-black/40 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white" placeholder="Record the decision, owner, reason, or next action…" />
+            <textarea id="capture-body" value={captureBody} onChange={(event) => setCaptureBody(event.target.value)} minLength={10} maxLength={8000} required rows={5} className="w-full resize-y rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-slate-900/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 focus:outline-none transition-all" placeholder="Record the decision, owner, reason, or next action…" />
           </div>
           <div className="flex flex-wrap items-end gap-4">
             <label className="text-xs font-bold text-slate-700 dark:text-gray-300">Visibility
@@ -874,7 +861,7 @@ export function SourcesPage() {
         {data && data.length > 0 && (
           <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-black/40 backdrop-blur-2xl shadow-sm dark:shadow-2xl">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-white/[0.02] border-b border-slate-200 dark:border-white/10 text-slate-500 dark:text-gray-400 font-bold uppercase tracking-wider text-[10px]">
+              <thead className="sticky top-0 z-10 bg-white/90 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-white/10 text-slate-500 dark:text-gray-400 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
                   <th className="px-4 py-3">Source</th>
                   <th className="px-4 py-3">Type</th>
@@ -885,15 +872,15 @@ export function SourcesPage() {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                 {data.map((source) => (
-                  <tr key={source.source_id} className="hover:bg-slate-50 dark:hover:bg-white/[0.03] transition">
-                    <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">{source.title}</td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-gray-300 font-mono">{source.type}</td>
+                  <tr key={source.source_id} className="border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
+                    <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">{source.title}</td>
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 font-mono">{source.type}</td>
                     <td className="px-4 py-3">
                       <span className="px-2.5 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/20 font-bold text-[10px] font-mono">
                         {source.acl_label}
                       </span>
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-slate-600 dark:text-gray-300 font-mono">{source.chunks}</td>
+                    <td className="px-4 py-3 tabular-nums text-slate-500 dark:text-slate-400 font-mono">{source.chunks}</td>
                     <td className="px-4 py-3">
                       <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300 font-semibold text-[10px]">
                         {source.status}

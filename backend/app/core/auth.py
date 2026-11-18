@@ -98,6 +98,60 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def ensure_identity_mappings_table(session: Session) -> None:
+    """Ensure the additive identity_mappings table exists in the database."""
+    try:
+        session.execute(
+            text(
+                "create table if not exists identity_mappings ("
+                "  supabase_sub text primary key,"
+                "  member_id text not null,"
+                "  project_id text not null,"
+                "  role text not null check (role in ('approver', 'leaver', 'incoming_maintainer', 'incoming_contributor')),"
+                "  email text,"
+                "  created_at text not null,"
+                "  updated_at text not null"
+                ")"
+            )
+        )
+    except Exception:
+        pass
+
+
+def record_identity_mapping(
+    session: Session,
+    supabase_sub: str,
+    member_id: str,
+    project_id: str,
+    role: str,
+    email: str | None = None,
+) -> None:
+    """Persist an additive mapping from Supabase sub to member, project, and role."""
+    ensure_identity_mappings_table(session)
+    now_iso = _now_iso()
+    try:
+        session.execute(
+            text(
+                "insert into identity_mappings (supabase_sub, member_id, project_id, role, email, created_at, updated_at) "
+                "values (:sub, :mid, :pid, :role, :email, :created_at, :updated_at) "
+                "on conflict (supabase_sub) do update set "
+                "member_id = excluded.member_id, project_id = excluded.project_id, role = excluded.role, email = excluded.email, updated_at = excluded.updated_at"
+            ),
+            {
+                "sub": str(supabase_sub),
+                "mid": str(member_id),
+                "pid": str(project_id),
+                "role": str(role),
+                "email": email,
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            },
+        )
+        session.commit()
+    except Exception:
+        pass
+
+
 def _provision_workspace(user_id: str, claims: dict, session: Session, role: str = "incoming_contributor") -> User:
     """Create an isolated project and member record for a first-time user.
 
@@ -168,6 +222,15 @@ def _provision_workspace(user_id: str, claims: dict, session: Session, role: str
         )
     session.commit()
 
+    record_identity_mapping(
+        session=session,
+        supabase_sub=user_id,
+        member_id=user_id,
+        project_id=project_id,
+        role=role,
+        email=email or None,
+    )
+
     return User(
         id=user_id,
         name=full_name,
@@ -236,24 +299,45 @@ def current_account_user(
 
 
 def current_user(authorization: str | None = Header(default=None), session: Session = Depends(get_session)) -> User:
-    """FastAPI dependency that validates a Bearer JWT and returns the authenticated User.
+    """FastAPI dependency that validates a Bearer JWT (Baton or Supabase) and returns the authenticated User.
 
-    Supports both demo HS256 tokens (issued by ``/auth/demo-login``) and
-    authenticated user tokens (issued after role-based registration/session sync).
-    Active status and assigned role are verified directly against the database on each request.
+    Supports:
+      1. Baton-minted HS256 tokens (from /auth/session, /auth/register, or /auth/demo-login).
+      2. Direct Supabase JWTs (ES256, RS256, or HS256) validated server-side.
+
+    Security & Workspace Isolation:
+      - Additive mapping from Supabase sub to member, project, and role stored in identity_mappings.
+      - Default Deny: Unmapped users are denied by default with 401 Unauthorized. Never auto-provisions as approver.
+      - Active status and assigned role are verified directly against the database on each request.
     """
     if not authorization or not authorization.lower().startswith("bearer "):
         raise _unauthorised("Sign in first.")
     token = authorization.split(" ", 1)[1].strip()
+
+    claims = None
+    # 1. Attempt decoding Baton HS256 JWT
     try:
         claims = jwt.decode(token, get_settings().jwt_secret, algorithms=["HS256"])
-    except jwt.PyJWTError:
-        raise _unauthorised("Your session expired or is invalid. Please sign in again.") from None
+    except (jwt.PyJWTError, Exception):
+        claims = None
 
-    uid = claims.get("sub") or ""
+    # 2. If not a Baton token, validate as Supabase JWT server-side
+    if claims is None:
+        try:
+            claims = verify_supabase_token(token)
+        except HTTPException:
+            raise
+        except Exception:
+            raise _unauthorised("Your session expired or is invalid. Please sign in again.") from None
+
+    uid = str(claims.get("sub") or "").strip()
+    if not uid:
+        raise _unauthorised("Token subject (sub) missing.")
+
     active_pid = claims.get("project_id")
+    token_email = (claims.get("email") or claims.get("user_metadata", {}).get("email") or "").strip().lower()
 
-    # 1. Authoritative project memberships lookup
+    # 3. Authoritative project memberships lookup
     has_any_pm = False
     try:
         has_any_pm = session.execute(
@@ -308,26 +392,72 @@ def current_user(authorization: str | None = Header(default=None), session: Sess
             name=row["name"],
             role=row["role"],
             project_id=row["project_id"],
-            email=row.get("email"),
+            email=row.get("email") or (token_email if not bool(row.get("is_demo", 0)) else None),
             is_demo=bool(row.get("is_demo", 0)),
         )
 
-    # 2. Legacy members table fallback (strictly for unmigrated databases without project_memberships)
+    # 4. Identity mappings & legacy members table fallback (strictly for unmigrated databases without project_memberships)
+    ensure_identity_mappings_table(session)
+    mapping = None
     try:
-        if active_pid:
-            m_row = session.execute(
-                text("select id, name, role, project_id, active, email, is_demo from members where id = :id and project_id = :pid"),
-                {"id": uid, "pid": active_pid},
-            ).mappings().first()
-        else:
+        mapping = session.execute(
+            text("select member_id, project_id, role, email from identity_mappings where supabase_sub = :sub"),
+            {"sub": uid},
+        ).mappings().first()
+    except Exception:
+        pass
+
+    m_row = None
+    if mapping:
+        member_id = mapping["member_id"]
+        try:
             m_row = session.execute(
                 text("select id, name, role, project_id, active, email, is_demo from members where id = :id"),
-                {"id": uid},
+                {"id": member_id},
             ).mappings().first()
-    except Exception:
-        m_row = None
+        except Exception:
+            m_row = session.execute(
+                text("select id, name, role, project_id, active from members where id = :id"),
+                {"id": member_id},
+            ).mappings().first()
+    else:
+        try:
+            if active_pid:
+                m_row = session.execute(
+                    text("select id, name, role, project_id, active, email, is_demo from members where (id = :id or (lower(email) = :email and is_demo = 0)) and project_id = :pid"),
+                    {"id": uid, "email": token_email, "pid": active_pid},
+                ).mappings().first()
+            elif token_email:
+                m_row = session.execute(
+                    text("select id, name, role, project_id, active, email, is_demo from members where id = :id or (lower(email) = :email and is_demo = 0)"),
+                    {"id": uid, "email": token_email},
+                ).mappings().first()
+            else:
+                m_row = session.execute(
+                    text("select id, name, role, project_id, active, email, is_demo from members where id = :id"),
+                    {"id": uid},
+                ).mappings().first()
+        except Exception:
+            m_row = None
 
-    if m_row is None or not m_row["active"]:
+        if m_row is not None:
+            try:
+                record_identity_mapping(
+                    session=session,
+                    supabase_sub=uid,
+                    member_id=m_row["id"],
+                    project_id=m_row["project_id"],
+                    role=m_row["role"],
+                    email=m_row.get("email") or token_email or None,
+                )
+            except Exception:
+                pass
+
+    # Default Deny: Unmapped users are denied by default. Never auto-provision a new user as an "Approver".
+    if m_row is None:
+        raise _unauthorised("This account is not mapped to any project or no longer has access. Please sign in or register first.")
+
+    if not m_row["active"]:
         raise _unauthorised("This account no longer has access to the project.")
 
     return User(
@@ -335,9 +465,12 @@ def current_user(authorization: str | None = Header(default=None), session: Sess
         name=m_row["name"],
         role=m_row["role"],
         project_id=m_row["project_id"],
-        email=m_row.get("email"),
+        email=m_row.get("email") or (token_email if not bool(m_row.get("is_demo", 0)) else None),
         is_demo=bool(m_row.get("is_demo", 0)),
     )
+
+
+get_current_user = current_user
 
 
 def require_role(*roles: str):
