@@ -33,7 +33,7 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     // -----------------------------------------------------------------------
     // Step 1: Open demo project, verify branding and progress bar
     // -----------------------------------------------------------------------
-    await expect(page.locator("aside").first()).toContainText("Baton");
+    await expect(page.locator("aside img[alt='Baton']").first()).toBeVisible();
     await expect(page.locator("body")).toContainText(/Campus Event Portal|Payments Service/i);
 
     // Navigate to Reconstruct / Ledger step
