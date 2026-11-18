@@ -25,9 +25,9 @@ export function ClaimDetailModal({ claim, onClose, onOpenSource }: ClaimDetailMo
       role="dialog"
       aria-modal="true"
       aria-labelledby="claim-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200"
     >
-      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-2xl text-slate-900">
+      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 sm:p-8 shadow-2xl text-slate-900">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -42,7 +42,7 @@ export function ClaimDetailModal({ claim, onClose, onOpenSource }: ClaimDetailMo
                 {claim.acl_label}
               </span>
             </div>
-            <h2 id="claim-modal-title" className="text-xl font-bold text-slate-900 mt-2.5 leading-snug">
+            <h2 id="claim-modal-title" className="text-lg sm:text-xl font-bold text-slate-900 mt-2.5 leading-snug">
               {claim.statement}
             </h2>
           </div>
@@ -50,7 +50,7 @@ export function ClaimDetailModal({ claim, onClose, onOpenSource }: ClaimDetailMo
             ref={closeBtnRef}
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer"
+            className="rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer flex-shrink-0"
           >
             Close
           </button>
@@ -91,7 +91,7 @@ export function ClaimDetailModal({ claim, onClose, onOpenSource }: ClaimDetailMo
         )}
 
         <div className="mt-4 space-y-4 text-sm">
-          <div className="grid grid-cols-2 gap-2.5 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <span className="text-slate-500 font-medium">Entity:</span>{" "}
               <code className="font-mono text-slate-900 font-bold">{claim.entity_key}</code>

@@ -65,12 +65,35 @@ def delete_connection(project_id: str, connection_id: str, session: Session) -> 
     return service.delete_connection(session, project_id, connection_id)
 
 
+def revoke_connection(project_id: str, connection_id: str, session: Session) -> dict:
+    return service.revoke_connection(session, project_id, connection_id)
+
+
+def reauthorize_connection(
+    project_id: str, user_id: str, connection_id: str, session: Session, redirect_uri: str | None = None
+) -> dict:
+    return service.reauthorize_connection(session, project_id, user_id, connection_id, redirect_uri)
+
+
+def complete_oauth_flow(
+    provider: str, code: str, state_token: str, session: Session, redirect_uri: str | None = None
+) -> dict:
+    return service.complete_oauth_flow(session, provider, code, state_token, redirect_uri)
+
+
+def refresh_connection_token(project_id: str, connection_id: str, session: Session) -> bool:
+    from app.modules.ingestion import crypto
+    return crypto.refresh_connection_token(session, project_id, connection_id)
+
+
 def sync_connection(project_id: str, connection_id: str, session: Session) -> dict:
     return service.sync_connection(session, project_id, connection_id)
 
 
 def reset_demo(session: Session) -> None:
     session.execute(text("delete from source_sync_records where project_id = 'proj-campus-event-portal'"))
+    session.execute(text("delete from connection_credentials where project_id = 'proj-campus-event-portal'"))
+    session.execute(text("delete from oauth_states where project_id = 'proj-campus-event-portal'"))
     session.execute(text("delete from source_connections where project_id = 'proj-campus-event-portal'"))
     session.execute(text("delete from source_chunks where project_id = 'proj-campus-event-portal' and source_id not like 'S%'"))
     session.execute(text("delete from sources where project_id = 'proj-campus-event-portal' and id not like 'S%'"))

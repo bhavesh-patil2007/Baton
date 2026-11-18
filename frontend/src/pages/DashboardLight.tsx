@@ -287,7 +287,7 @@ export const DashboardLight: React.FC<{ withLayout?: boolean }> = ({ withLayout 
         </div>
 
         {/* Right 3D Interactive Hero Canvas */}
-        <div className="relative z-10 w-full lg:w-[480px] flex-shrink-0">
+        <div className="relative z-10 w-full lg:w-[480px] h-64 sm:h-72 lg:h-auto flex-shrink-0">
           <Suspense fallback={<FallbackHero />}>
             <ThreeHeroNode />
           </Suspense>
@@ -764,7 +764,7 @@ export const DashboardLight: React.FC<{ withLayout?: boolean }> = ({ withLayout 
             <span>Quick Actions</span>
           </div>
 
-          <div className="grid grid-cols-4 gap-2 pt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
             {roleQuickActions.map((action) => {
               const ActionIcon = action.icon;
               return (

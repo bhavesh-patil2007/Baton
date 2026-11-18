@@ -1,8 +1,21 @@
-"""Seeded demo users and signed JWTs. FROZEN after Day 0.
-The token proves identity only. Role and active status are re-read from the database on every request,
-so a revoked member loses access immediately."""
+"""JWT authentication for the Baton API.
+
+Supports two identity flows:
+  1. Demo / test flow – the ``/auth/demo-login`` endpoint issues HS256 JWTs for
+     seeded members.  The ``sub`` claim contains a short demo ID such as
+     ``u-approver``.  ``current_user`` looks up the member row in the database
+     and returns the full ``User`` object.
+  2. Supabase / production flow – authenticated Supabase users register with an
+     assigned role via ``/auth/register`` (with invitation-controlled access for Approver)
+     or authenticate via ``/auth/session``.  Baton issues signed JWTs with identity,
+     role, and email claims.
+
+The token proves identity only.  Role and active status are re-read from the
+database on every request, so a revoked member loses access immediately.
+"""
 import json
 import os
+import re
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -23,6 +36,12 @@ SEED_USERS = [
     {"id": "u-meera", "name": "Meera", "role": "incoming_maintainer"},
     {"id": "u-contrib", "name": "Incoming Contributor", "role": "incoming_contributor"},
 ]
+
+# Matches any RFC-4122 UUID (Supabase always uses this format for sub).
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -53,7 +72,95 @@ def _unauthorised(detail: str) -> HTTPException:
     return HTTPException(status_code=401, detail=detail, headers={"WWW-Authenticate": "Bearer"})
 
 
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _provision_workspace(user_id: str, claims: dict, session: Session, role: str = "incoming_contributor") -> User:
+    """Create an isolated project and member record for a first-time user.
+
+    NOTE: Approver access cannot be granted through automatic provisioning.
+    Approver registration requires a valid single-use invitation code verified
+    via /auth/register.
+    """
+    if role == "approver":
+        raise HTTPException(
+            status_code=403,
+            detail="Approver access requires invitation-controlled registration via /auth/register.",
+        )
+    project_id = f"proj-{user_id}"
+    # Derive a human-readable display name from the JWT claims (Supabase
+    # populates ``email``, ``name``, or ``user_metadata.full_name``).
+    email = claims.get("email") or claims.get("user_metadata", {}).get("email", "")
+    full_name = (
+        claims.get("name")
+        or claims.get("user_metadata", {}).get("full_name")
+        or (email.split("@")[0] if email else "")
+        or "User"
+    )
+
+    # --- project (workspace) ---
+    session.execute(
+        text(
+            "insert into projects (id, name, created_at) "
+            "values (:id, :name, :created_at) "
+            "on conflict (id) do nothing"
+        ),
+        {"id": project_id, "name": f"{full_name}'s Workspace", "created_at": _now_iso()},
+    )
+
+    # --- member with non-approver role (approver requires invitation registration) ---
+    try:
+        session.execute(
+            text(
+                "insert into members (id, project_id, name, role, active, email, is_demo) "
+                "values (:id, :project_id, :name, :role, 1, :email, 0) "
+                "on conflict (id) do nothing"
+            ),
+            {"id": user_id, "project_id": project_id, "name": full_name, "role": role, "email": email or None},
+        )
+    except Exception:
+        session.execute(
+            text(
+                "insert into members (id, project_id, name, role, active) "
+                "values (:id, :project_id, :name, :role, 1) "
+                "on conflict (id) do nothing"
+            ),
+            {"id": user_id, "project_id": project_id, "name": full_name, "role": role},
+        )
+    session.commit()
+
+    # Re-read to ensure we return the canonical persisted row (handles race).
+    try:
+        row = session.execute(
+            text("select id, name, role, project_id, email, is_demo from members where id = :id"),
+            {"id": user_id},
+        ).mappings().first()
+    except Exception:
+        row = session.execute(
+            text("select id, name, role, project_id from members where id = :id"),
+            {"id": user_id},
+        ).mappings().first()
+    if row is None:
+        raise _unauthorised("Workspace provisioning failed. Please retry.")
+    return User(
+        id=row["id"],
+        name=row["name"],
+        role=row["role"],
+        project_id=row["project_id"],
+        email=row.get("email"),
+        is_demo=bool(row.get("is_demo", 0)),
+    )
+
+
 def current_user(authorization: str | None = Header(default=None), session: Session = Depends(get_session)) -> User:
+    """FastAPI dependency that validates a Bearer JWT and returns the authenticated User.
+
+    Supports both demo HS256 tokens (issued by ``/auth/demo-login``) and
+    authenticated user tokens (issued after role-based registration/session sync).
+    Active status and assigned role are verified directly against the database on each request.
+    """
     if not authorization or not authorization.lower().startswith("bearer "):
         raise _unauthorised("Sign in first.")
     token = authorization.split(" ", 1)[1].strip()

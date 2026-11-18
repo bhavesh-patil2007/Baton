@@ -793,3 +793,33 @@ def test_regression_session_sync_es256_and_error_handling(client, monkeypatch):
     assert resp_expired.status_code == 401
     assert "expired" in resp_expired.json()["detail"].lower()
 
+
+def test_provision_workspace_cannot_grant_approver_or_bypass_invitations(client):
+    """Verify _provision_workspace() cannot grant Approver access or bypass invitation controls."""
+    import pytest
+    from fastapi import HTTPException
+    from sqlalchemy.orm import Session
+
+    from app.core.auth import _provision_workspace
+    from app.core.db import get_engine
+
+    # 1. Attempting to provision a workspace with role="approver" must be rejected with 403
+    with Session(get_engine()) as session:
+        with pytest.raises(HTTPException) as exc_info:
+            _provision_workspace("user-uuid-1", {"email": "lead@test.com"}, session, role="approver")
+        assert exc_info.value.status_code == 403
+        assert "invitation" in exc_info.value.detail.lower()
+
+    # 2. Default provisioning defaults to non-approver (incoming_contributor)
+    with Session(get_engine()) as session:
+        user = _provision_workspace("user-uuid-2", {"email": "contrib@test.com"}, session)
+        assert user.role == "incoming_contributor"
+        assert user.role != "approver"
+
+    # 3. Unregistered user calling protected endpoints with unknown token cannot bypass registration
+    unregistered_token = make_supabase_token("unregistered-uuid-3", "unregistered@test.com")
+    resp_unreg = client.get("/me", headers={"Authorization": f"Bearer {unregistered_token}"})
+    assert resp_unreg.status_code == 401
+    assert "no longer has access" in resp_unreg.json()["detail"].lower() or "sign in" in resp_unreg.json()["detail"].lower()
+
+

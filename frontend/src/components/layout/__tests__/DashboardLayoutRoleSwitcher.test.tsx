@@ -5,9 +5,13 @@ import { DashboardLayoutDark } from "../DashboardLayoutDark";
 import { DashboardLayoutLight } from "../DashboardLayoutLight";
 
 const mockUseAuth = vi.fn();
-vi.mock("../../../context/AuthContext", () => ({
-  useAuth: () => mockUseAuth(),
-}));
+vi.mock("../../../context/AuthContext", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../context/AuthContext")>();
+  return {
+    ...actual,
+    useAuth: () => mockUseAuth(),
+  };
+});
 
 vi.mock("../../../context/ThemeContext", () => ({
   useTheme: () => ({ isDark: true, toggleTheme: vi.fn() }),
