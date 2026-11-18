@@ -22,18 +22,18 @@ test.describe("Role Matrix and Access Control Verification", () => {
     await page.getByRole("link", { name: /Review/i }).first().click();
 
     // Verify approver controls
-    await expect(page.getByRole("heading", { name: /Handover Checklist & Review|Review/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Handover Checklist & Review|Review/i }).first()).toBeVisible();
     await expect(page.getByText(/Handover Checklist|Readiness/i).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Audit Trail" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Version History" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Confirm all verified" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Audit Trail" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Version History" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Confirm all verified" }).first()).toBeVisible();
 
     // Verify Audit Trail modal opens and closes
-    await page.getByRole("button", { name: "Audit Trail" }).click();
-    const auditModal = page.getByRole("dialog", { name: "Audit Trail" });
+    await page.getByRole("button", { name: "Audit Trail" }).first().click();
+    const auditModal = page.getByRole("dialog", { name: "Audit Trail" }).first();
     await expect(auditModal).toBeVisible();
-    await expect(auditModal.getByRole("heading", { name: "Audit Trail" })).toBeVisible();
-    await auditModal.getByRole("button", { name: "Close" }).click();
+    await expect(auditModal.getByRole("heading", { name: "Audit Trail" }).first()).toBeVisible();
+    await auditModal.getByRole("button", { name: "Close" }).first().click();
     await expect(auditModal).not.toBeVisible();
   });
 
@@ -42,9 +42,9 @@ test.describe("Role Matrix and Access Control Verification", () => {
     await page.getByRole("link", { name: /Review/i }).first().click();
 
     // Verify leaver landing
-    await expect(page.getByRole("heading", { name: /Handover Questions & Answers|Leaver Gap Interview|Leaver/i })).toBeVisible();
-    await expect(page.getByText("Confidentiality & Automated Redaction")).toBeVisible();
-    await expect(page.getByText(/Secrets .* are automatically redacted/i)).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Handover Questions & Answers|Leaver Gap Interview|Leaver/i }).first()).toBeVisible();
+    await expect(page.getByText("Confidentiality & Automated Redaction").first()).toBeVisible();
+    await expect(page.getByText(/Secrets .* are automatically redacted/i).first()).toBeVisible();
 
     // Verify approver buttons are NOT visible
     await expect(page.getByRole("button", { name: "Confirm all verified" })).not.toBeVisible();
@@ -56,8 +56,8 @@ test.describe("Role Matrix and Access Control Verification", () => {
     await page.getByRole("link", { name: /Review/i }).first().click();
 
     // Review page is read-only
-    await expect(page.getByText("Read-Only View")).toBeVisible();
-    await expect(page.getByText(/reserved for project approvers|restricted to project approvers/i)).toBeVisible();
+    await expect(page.getByText("Read-Only View").first()).toBeVisible();
+    await expect(page.getByText(/reserved for project approvers|restricted to project approvers/i).first()).toBeVisible();
 
     // Navigate to Handover
     await page.getByRole("link", { name: /Handover|Go to Handover/i }).first().click();
@@ -69,7 +69,7 @@ test.describe("Role Matrix and Access Control Verification", () => {
     await page.getByRole("link", { name: /Review/i }).first().click();
 
     // Review page is read-only
-    await expect(page.getByText("Read-Only View")).toBeVisible();
+    await expect(page.getByText("Read-Only View").first()).toBeVisible();
 
     // Navigate to Handover
     await page.getByRole("link", { name: /Handover|Go to Handover/i }).first().click();

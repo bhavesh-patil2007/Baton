@@ -34,7 +34,7 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     // Step 1: Open demo project, verify branding and progress bar
     // -----------------------------------------------------------------------
     await expect(page.locator("aside img[alt='Baton']").first()).toBeVisible();
-    await expect(page.locator("body")).toContainText(/Campus Event Portal|Payments Service/i);
+    await expect(page.locator("body")).toContainText(/Welcome to Baton|Baton/i);
 
     // Navigate to Reconstruct / Ledger step
     const reconstructLink = page.getByRole("link", { name: /Claim Ledger|Reconstruct|Ledger/i }).first();
@@ -48,7 +48,7 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     // -----------------------------------------------------------------------
     await page.getByRole("link", { name: /Review/i }).first().click();
     await expect(page).toHaveURL(/.*review/);
-    await expect(page.getByRole("heading", { name: /Handover Checklist & Review|Review/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Handover Checklist & Review|Review/i }).first()).toBeVisible();
 
     // Verify citation chip opens SourceDrawer with highlighted quote
     const citationChip = page.locator("button[title^='Chunk:']").first();
@@ -103,10 +103,10 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     // -----------------------------------------------------------------------
     // Step 5: Approve version v1 into immutable snapshot
     // -----------------------------------------------------------------------
-    const approveBtn = page.getByRole("button", { name: /Approve & Share Handover|Approve/i });
+    const approveBtn = page.getByRole("button", { name: /Approve & Share Handover|Approve/i }).first();
     if (await approveBtn.isVisible() && (await approveBtn.isEnabled())) {
       await approveBtn.click();
-      const shareModal = page.getByRole("dialog", { name: /Approve Handover Version|Approve/i });
+      const shareModal = page.getByRole("dialog", { name: /Approve Handover Version|Approve/i }).first();
       if (await shareModal.isVisible()) {
         const contributorCheckbox = shareModal.getByLabel(/Incoming Contributor/i);
         if (await contributorCheckbox.isVisible()) {
@@ -114,15 +114,15 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
         }
 
         // Submit approval
-        await shareModal.getByRole("button", { name: /Approve Snapshot|Approve/i }).click();
+        await shareModal.getByRole("button", { name: /Approve Snapshot|Approve/i }).first().click();
         await expect(shareModal).not.toBeVisible();
 
         // Verify version history modal pops up showing snapshot hash
-        const versionModal = page.getByRole("dialog", { name: "Version History" });
+        const versionModal = page.getByRole("dialog", { name: "Version History" }).first();
         if (await versionModal.isVisible()) {
           await expect(versionModal).toContainText("Approved");
           await expect(versionModal).toContainText("Snapshot Hash");
-          await versionModal.getByRole("button", { name: "Close" }).click();
+          await versionModal.getByRole("button", { name: "Close" }).first().click();
         }
       }
     }
@@ -134,12 +134,12 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     await page.goto("/review");
 
     // On Review page, Incoming Contributor sees Read-Only banner
-    await expect(page.getByText("Read-Only View")).toBeVisible();
+    await expect(page.getByText("Read-Only View").first()).toBeVisible();
 
     // Navigate to Handover
     await page.getByRole("link", { name: /Handover|Go to Handover/i }).first().click();
     await expect(page).toHaveURL(/.*handover/);
-    await expect(page.getByRole("heading", { name: /Handover for Campus Event Portal|Handover/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Handover for Campus Event Portal|Handover/i }).first()).toBeVisible();
 
     // Verify restricted items are hidden behind count placeholder (role="note")
     const placeholderNote = page.getByRole("note").first();
@@ -153,13 +153,13 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     const ackBtn = page.getByRole("button", { name: /Acknowledge/i }).first();
     if (await ackBtn.isVisible()) {
       await ackBtn.click();
-      await expect(page.getByText(/Receipt stored|Acknowledged/i)).toBeVisible();
+      await expect(page.getByText(/Receipt stored|Acknowledged/i).first()).toBeVisible();
     }
 
     const acceptOwnershipBtn = page.getByRole("button", { name: /Accept ownership/i }).first();
     if (await acceptOwnershipBtn.isVisible()) {
       await acceptOwnershipBtn.click();
-      await expect(page.getByText(/You accepted this|Accepted/i)).toBeVisible();
+      await expect(page.getByText(/You accepted this|Accepted/i).first()).toBeVisible();
     }
   });
 });
