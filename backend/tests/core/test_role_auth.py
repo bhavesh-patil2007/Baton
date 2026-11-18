@@ -823,3 +823,104 @@ def test_provision_workspace_cannot_grant_approver_or_bypass_invitations(client)
     assert "no longer has access" in resp_unreg.json()["detail"].lower() or "sign in" in resp_unreg.json()["detail"].lower()
 
 
+def test_direct_supabase_jwt_auth_and_identity_mapping(client):
+    """Verify that raw Supabase JWTs are validated server-side and mapped via identity_mappings."""
+    uid = "uid-supa-direct-1"
+    email = "supa-direct@baton.test"
+    sb_token = make_supabase_token(uid, email)
+
+    # 1. Register user
+    reg = client.post(
+        "/auth/register",
+        json={
+            "user_id": uid,
+            "email": email,
+            "name": "Supa Direct User",
+            "role": "incoming_maintainer",
+            "supabase_token": sb_token,
+        },
+    )
+    assert reg.status_code == 200
+
+    # 2. Directly call /me with raw Supabase Bearer token (NOT Baton HS256 token!)
+    me_res = client.get("/me", headers={"Authorization": f"Bearer {sb_token}"})
+    assert me_res.status_code == 200
+    data = me_res.json()
+    assert data["id"] == uid
+    assert data["email"] == email
+    assert data["role"] == "incoming_maintainer"
+    assert data["is_demo"] is False
+
+
+def test_default_deny_for_unmapped_supabase_token(client):
+    """Verify Default Deny: an unmapped Supabase token cannot access protected endpoints."""
+    uid = "unmapped-intruder"
+    email = "intruder@external.test"
+    sb_token = make_supabase_token(uid, email)
+
+    for path in ["/me", "/claims", "/gaps", "/sources", "/handover/v1/view"]:
+        res = client.get(path, headers={"Authorization": f"Bearer {sb_token}"})
+        assert res.status_code == 401
+        detail = res.json()["detail"].lower()
+        assert "not mapped" in detail or "no longer has access" in detail or "sign in" in detail
+
+
+def test_strict_multi_project_workspace_isolation(client):
+    """Verify that different users in different projects are strictly isolated across APIs."""
+    approver_headers = login(client, "approver")
+
+    # Create invitations for two approvers in different workspaces
+    inv_a = client.post("/auth/invitations", headers=approver_headers, json={"role": "approver", "email": "lead-a@test.com"}).json()["code"]
+    inv_b = client.post("/auth/invitations", headers=approver_headers, json={"role": "approver", "email": "lead-b@test.com"}).json()["code"]
+
+    uid_a = "uid-project-lead-a"
+    email_a = "lead-a@test.com"
+    token_a = client.post(
+        "/auth/register",
+        json={
+            "user_id": uid_a,
+            "email": email_a,
+            "name": "Lead Alpha",
+            "role": "approver",
+            "invitation_code": inv_a,
+            "project_id": "proj-workspace-alpha",
+            "supabase_token": make_supabase_token(uid_a, email_a),
+        },
+    ).json()["token"]
+
+    uid_b = "uid-project-lead-b"
+    email_b = "lead-b@test.com"
+    token_b = client.post(
+        "/auth/register",
+        json={
+            "user_id": uid_b,
+            "email": email_b,
+            "name": "Lead Beta",
+            "role": "approver",
+            "invitation_code": inv_b,
+            "project_id": "proj-workspace-beta",
+            "supabase_token": make_supabase_token(uid_b, email_b),
+        },
+    ).json()["token"]
+
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    # Upload source in Project Alpha
+    upload_res = client.post(
+        "/sources",
+        headers=headers_a,
+        data={"consent": True, "acl_label": "L1"},
+        files={"file": ("alpha_readme.md", b"# Alpha Project Docs", "text/markdown")},
+    )
+    assert upload_res.status_code == 201
+
+    # Lead Alpha sees the source
+    sources_a = client.get("/sources", headers=headers_a).json()
+    assert any(s.get("title") == "alpha_readme.md" for s in sources_a)
+
+    # Lead Beta in Project Beta CANNOT see Project Alpha's source
+    sources_b = client.get("/sources", headers=headers_b).json()
+    assert not any(s.get("title") == "alpha_readme.md" for s in sources_b)
+
+
