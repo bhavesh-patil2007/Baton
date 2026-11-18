@@ -17,6 +17,14 @@ test.describe("Role Matrix and Access Control Verification", () => {
     await expect(page.getByRole("button", { name: "Audit Trail" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Version History" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Confirm all verified" })).toBeVisible();
+
+    // Verify Audit Trail modal opens and closes
+    await page.getByRole("button", { name: "Audit Trail" }).click();
+    const auditModal = page.getByRole("dialog", { name: "Audit Trail" });
+    await expect(auditModal).toBeVisible();
+    await expect(auditModal.getByRole("heading", { name: "Audit Trail" })).toBeVisible();
+    await auditModal.getByRole("button", { name: "Close" }).click();
+    await expect(auditModal).not.toBeVisible();
   });
 
   test("leaver sees gap interview and confidentiality banner, not approver queue", async ({ page }) => {
