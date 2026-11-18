@@ -1,14 +1,15 @@
 import { test, expect } from "@playwright/test";
 
-async function loginAsRole(page: any, request: any, role: string) {
+async function loginAsRole(page: any, request: any, role: string, targetUrl: string = "/dashboard") {
   const res = await request.post("http://127.0.0.1:8000/auth/demo-login", {
     data: { role },
   });
   const { token } = await res.json();
-  await page.addInitScript((t: string) => {
+  await page.goto("/login");
+  await page.evaluate((t: string) => {
     localStorage.setItem("baton.token", t);
   }, token);
-  await page.goto("/dashboard");
+  await page.goto(targetUrl);
 }
 
 test.describe("Role Matrix and Access Control Verification", () => {
@@ -18,7 +19,7 @@ test.describe("Role Matrix and Access Control Verification", () => {
 
   test("approver has full review, readiness, and snapshot approval controls", async ({ page, request }) => {
     await loginAsRole(page, request, "approver");
-    await page.getByRole("link", { name: /Review/i }).click();
+    await page.getByRole("link", { name: /Review/i }).first().click();
 
     // Verify approver controls
     await expect(page.getByRole("heading", { name: /Handover Checklist & Review|Review/i })).toBeVisible();
@@ -38,7 +39,7 @@ test.describe("Role Matrix and Access Control Verification", () => {
 
   test("leaver sees gap interview and confidentiality banner, not approver queue", async ({ page, request }) => {
     await loginAsRole(page, request, "leaver");
-    await page.getByRole("link", { name: /Review/i }).click();
+    await page.getByRole("link", { name: /Review/i }).first().click();
 
     // Verify leaver landing
     await expect(page.getByRole("heading", { name: /Handover Questions & Answers|Leaver Gap Interview|Leaver/i })).toBeVisible();
@@ -52,7 +53,7 @@ test.describe("Role Matrix and Access Control Verification", () => {
 
   test("incoming maintainer sees read-only banner and appropriate ACL restrictions", async ({ page, request }) => {
     await loginAsRole(page, request, "incoming_maintainer");
-    await page.getByRole("link", { name: /Review/i }).click();
+    await page.getByRole("link", { name: /Review/i }).first().click();
 
     // Review page is read-only
     await expect(page.getByText("Read-Only View")).toBeVisible();
@@ -65,7 +66,7 @@ test.describe("Role Matrix and Access Control Verification", () => {
 
   test("incoming contributor sees read-only banner and hidden placeholders in handover", async ({ page, request }) => {
     await loginAsRole(page, request, "incoming_contributor");
-    await page.getByRole("link", { name: /Review/i }).click();
+    await page.getByRole("link", { name: /Review/i }).first().click();
 
     // Review page is read-only
     await expect(page.getByText("Read-Only View")).toBeVisible();

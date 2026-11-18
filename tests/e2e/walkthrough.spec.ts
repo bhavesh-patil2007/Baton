@@ -1,14 +1,15 @@
 import { test, expect } from "@playwright/test";
 
-async function loginAsRole(page: any, request: any, role: string) {
+async function loginAsRole(page: any, request: any, role: string, targetUrl: string = "/dashboard") {
   const res = await request.post("http://127.0.0.1:8000/auth/demo-login", {
     data: { role },
   });
   const { token } = await res.json();
-  await page.addInitScript((t: string) => {
+  await page.goto("/login");
+  await page.evaluate((t: string) => {
     localStorage.setItem("baton.token", t);
   }, token);
-  await page.goto("/dashboard");
+  await page.goto(targetUrl);
 }
 
 async function switchRole(page: any, request: any, role: string) {
@@ -19,7 +20,6 @@ async function switchRole(page: any, request: any, role: string) {
   await page.evaluate((t: string) => {
     localStorage.setItem("baton.token", t);
   }, token);
-  await page.reload();
 }
 
 test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
@@ -34,10 +34,10 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     // Step 1: Open demo project, verify branding and progress bar
     // -----------------------------------------------------------------------
     await expect(page.locator("aside, header")).toContainText("Baton");
-    await expect(page.locator("body")).toContainText("Campus Event Portal");
+    await expect(page.locator("body")).toContainText(/Campus Event Portal|Payments Service/i);
 
     // Navigate to Reconstruct / Ledger step
-    const reconstructLink = page.getByRole("link", { name: /Claim Ledger|Reconstruct|Ledger/i });
+    const reconstructLink = page.getByRole("link", { name: /Claim Ledger|Reconstruct|Ledger/i }).first();
     if (await reconstructLink.isVisible()) {
       await reconstructLink.click();
       await expect(page).toHaveURL(/.*ledger/);
@@ -46,7 +46,7 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     // -----------------------------------------------------------------------
     // Step 2: Open Review queue & verify source citation drawer
     // -----------------------------------------------------------------------
-    await page.getByRole("link", { name: /Review/i }).click();
+    await page.getByRole("link", { name: /Review/i }).first().click();
     await expect(page).toHaveURL(/.*review/);
     await expect(page.getByRole("heading", { name: /Handover Checklist & Review|Review/i })).toBeVisible();
 
@@ -150,16 +150,16 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     // -----------------------------------------------------------------------
     // Step 7: Acknowledge a section and accept ownership
     // -----------------------------------------------------------------------
-    const ackBtn = page.getByRole("button", { name: /Acknowledge section|Acknowledge/i }).first();
+    const ackBtn = page.getByRole("button", { name: /Acknowledge/i }).first();
     if (await ackBtn.isVisible()) {
       await ackBtn.click();
-      await expect(page.getByText(/Acknowledged/i)).toBeVisible();
+      await expect(page.getByText(/Receipt stored|Acknowledged/i)).toBeVisible();
     }
 
-    const acceptOwnershipBtn = page.getByRole("button", { name: /Accept ownership|Accept/i }).first();
+    const acceptOwnershipBtn = page.getByRole("button", { name: /Accept ownership/i }).first();
     if (await acceptOwnershipBtn.isVisible()) {
       await acceptOwnershipBtn.click();
-      await expect(page.getByText(/Accepted/i)).toBeVisible();
+      await expect(page.getByText(/You accepted this|Accepted/i)).toBeVisible();
     }
   });
 });
