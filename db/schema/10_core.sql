@@ -3,6 +3,7 @@
 create table if not exists projects (
   id text primary key,
   name text not null,
+  owner_id text,
   created_at text not null
 );
 
@@ -18,6 +19,7 @@ create table if not exists members (
 
 create table if not exists invitations (
   id text primary key,
+  project_id text references projects(id),
   code text unique not null,
   role text not null check (role in ('approver', 'leaver', 'incoming_maintainer', 'incoming_contributor')),
   email text,

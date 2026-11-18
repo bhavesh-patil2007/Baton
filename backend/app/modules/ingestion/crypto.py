@@ -101,7 +101,7 @@ def generate_oauth_state(
     ttl_seconds: int = 900,
 ) -> str:
     """Generate and store a signed, expiring, single-use OAuth state bound to the project."""
-    nonce = secrets.token_urlsafe(32)
+    nonce = secrets.token_hex(24)
     now = datetime.now(UTC)
     expires_at = now + timedelta(seconds=ttl_seconds)
     expires_str = expires_at.isoformat()
@@ -143,11 +143,12 @@ def verify_and_consume_oauth_state(
     if not state_token or not state_token.startswith("baton_"):
         raise OAuthStateError("OAuth state parameter is missing or malformed.")
 
-    parts = state_token.split("_")
-    if len(parts) != 3:
+    remainder = state_token[len("baton_"):]
+    if "_" not in remainder:
         raise OAuthStateError("OAuth state format is invalid.")
-
-    _, nonce, sig = parts
+    nonce, sig = remainder.rsplit("_", 1)
+    if not nonce or not sig:
+        raise OAuthStateError("OAuth state format is invalid.")
 
     row = session.execute(
         text("""
@@ -257,19 +258,22 @@ def save_connection_credentials(
     session.commit()
 
 
-def get_connection_credentials(session: Session, connection_id: str) -> dict[str, Any] | None:
+def get_connection_credentials(session: Session, connection_id: str, project_id: str | None = None) -> dict[str, Any] | None:
     """Retrieve and decrypt credentials for a specific connection.
 
     Never pass the returned dictionary to API response serialization.
     """
-    row = session.execute(
-        text("""
-            select connection_id, project_id, encrypted_access_token, encrypted_refresh_token,
-                   token_expires_at, scopes, external_account
-            from connection_credentials where connection_id = :id
-        """),
-        {"id": connection_id},
-    ).mappings().first()
+    query = """
+        select connection_id, project_id, encrypted_access_token, encrypted_refresh_token,
+               token_expires_at, scopes, external_account
+        from connection_credentials where connection_id = :id
+    """
+    params: dict[str, Any] = {"id": connection_id}
+    if project_id:
+        query += " and project_id = :p"
+        params["p"] = project_id
+
+    row = session.execute(text(query), params).mappings().first()
 
     if not row:
         return None
@@ -292,18 +296,20 @@ def get_connection_credentials(session: Session, connection_id: str) -> dict[str
     }
 
 
-def delete_connection_credentials(session: Session, connection_id: str) -> None:
+def delete_connection_credentials(session: Session, connection_id: str, project_id: str | None = None) -> None:
     """Delete credentials associated with a connection."""
-    session.execute(
-        text("delete from connection_credentials where connection_id = :id"),
-        {"id": connection_id},
-    )
+    query = "delete from connection_credentials where connection_id = :id"
+    params: dict[str, Any] = {"id": connection_id}
+    if project_id:
+        query += " and project_id = :p"
+        params["p"] = project_id
+    session.execute(text(query), params)
     session.commit()
 
 
 def revoke_connection_credentials(session: Session, project_id: str, connection_id: str) -> None:
     """Revoke credentials and mark connection auth_status as 'revoked'."""
-    delete_connection_credentials(session, connection_id)
+    delete_connection_credentials(session, connection_id, project_id=project_id)
     now = datetime.now(UTC).isoformat()
     session.execute(
         text("""

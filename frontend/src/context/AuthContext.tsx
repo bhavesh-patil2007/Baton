@@ -19,9 +19,11 @@ import {
   setStoredToken,
   type Role,
   type UserProfile,
+  type ProjectItem,
   ApiError,
 } from "../api/client";
 import { supabase } from "../features/auth/supabase";
+import { queryClient } from "../queryClient";
 
 export interface ExtendedUser extends UserProfile {
   firstName: string;
@@ -45,10 +47,17 @@ export interface AuthContextType {
   loading: boolean;
   error: string | null;
   isAuthenticated: boolean;
+  projects: ProjectItem[];
+  activeProject: ProjectItem | null;
+  requiresProject: boolean;
   loginDemo: (role?: Role) => Promise<void>;
   register: (payload: RegisterParams) => Promise<ExtendedUser>;
-  syncSession: (user_id: string, email: string, name?: string) => Promise<{ registered: boolean; requires_role?: boolean }>;
+  syncSession: (user_id: string, email: string, name?: string) => Promise<{ registered: boolean; requires_role?: boolean; requires_project?: boolean }>;
   switchRole: (role: Role) => Promise<void>;
+  switchProject: (projectId: string) => Promise<void>;
+  createProject: (name: string) => Promise<ProjectItem>;
+  joinProject: (invitationCode: string) => Promise<ProjectItem>;
+  fetchProjects: () => Promise<ProjectItem[]>;
   logout: () => Promise<void>;
   resetDemo: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -155,6 +164,9 @@ async function getAuthenticatedEmail(): Promise<string | undefined> {
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<ExtendedUser | null>(null);
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [activeProject, setActiveProject] = useState<ProjectItem | null>(null);
+  const [requiresProject, setRequiresProject] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -167,7 +179,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const response = await batonApi.demoLogin(role);
       setStoredToken(response.token);
-      setUser(formatUser(response.user, await getAuthenticatedEmail()));
+      queryClient.clear();
+      const authedEmail = await getAuthenticatedEmail();
+      const formatted = formatUser(response.user, authedEmail);
+      setUser(formatted);
+      const projs = await batonApi.getProjects().catch(() => [
+        { id: "proj-campus-event-portal", name: "Campus Event Portal", role: response.user.role },
+      ]);
+      setProjects(projs);
+      const active = projs.find((p) => p.id === response.user.project_id) || projs[0] || null;
+      setActiveProject(active);
+      setRequiresProject(false);
     } catch (err: unknown) {
       const message = err instanceof ApiError ? err.message : "Failed to sign in via demo role";
       setError(message);
@@ -191,6 +213,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const authedEmail = await getAuthenticatedEmail();
       const formatted = formatUser(response.user, authedEmail || payload.email);
       setUser(formatted);
+      const projs = await batonApi.getProjects().catch(() => []);
+      setProjects(projs);
+      const active = projs.find((p) => p.id === response.user.project_id) || projs[0] || null;
+      setActiveProject(active);
+      setRequiresProject(false);
       return formatted;
     } catch (err: unknown) {
       const message = err instanceof ApiError ? err.message : "Registration failed";
@@ -211,15 +238,121 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const activeSession = (await supabase?.auth.getSession())?.data.session;
       const token = activeSession?.access_token;
       const res = await batonApi.syncSession({ user_id, email, name, supabase_token: token });
+      if (res.requires_project) {
+        if (res.token) setStoredToken(res.token);
+        setRequiresProject(true);
+        setProjects([]);
+        setActiveProject(null);
+        return { registered: true, requires_project: true };
+      }
       if (res.registered && res.token && res.user) {
         setStoredToken(res.token);
         const authedEmail = await getAuthenticatedEmail();
         setUser(formatUser(res.user, authedEmail || email));
+        if (res.projects) {
+          setProjects(res.projects);
+          const active = res.projects.find((p) => p.id === res.user?.project_id) || res.projects[0] || null;
+          setActiveProject(active);
+        }
+        setRequiresProject(false);
         return { registered: true };
       }
       return { registered: false, requires_role: Boolean(res.requires_role) };
     } catch (err: unknown) {
       const message = err instanceof ApiError ? err.message : "Session sync failed";
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /**
+   * Fetch all active projects
+   */
+  const fetchProjects = useCallback(async () => {
+    try {
+      const projs = await batonApi.getProjects();
+      setProjects(projs);
+      return projs;
+    } catch {
+      return [];
+    }
+  }, []);
+
+  /**
+   * Switch between projects and invalidate React Query cache
+   */
+  const switchProject = useCallback(async (projectId: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await batonApi.switchProject(projectId);
+      setStoredToken(res.token);
+      queryClient.clear();
+      const authedEmail = await getAuthenticatedEmail();
+      const updatedUser = formatUser(res.user, authedEmail);
+      setUser(updatedUser);
+      setActiveProject(res.project);
+      const projs = await batonApi.getProjects().catch(() => []);
+      setProjects(projs);
+      setRequiresProject(false);
+    } catch (err: unknown) {
+      const message = err instanceof ApiError ? err.message : "Failed to switch project";
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /**
+   * Create a new project (caller becomes Approver)
+   */
+  const createProject = useCallback(async (name: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await batonApi.createProject(name);
+      setStoredToken(res.token);
+      queryClient.clear();
+      const authedEmail = await getAuthenticatedEmail();
+      const updatedUser = formatUser(res.user, authedEmail);
+      setUser(updatedUser);
+      setActiveProject(res.project);
+      const projs = await batonApi.getProjects().catch(() => []);
+      setProjects(projs);
+      setRequiresProject(false);
+      return res.project;
+    } catch (err: unknown) {
+      const message = err instanceof ApiError ? err.message : "Failed to create project";
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /**
+   * Join an existing project via invitation code
+   */
+  const joinProject = useCallback(async (invitationCode: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await batonApi.joinProject(invitationCode);
+      setStoredToken(res.token);
+      queryClient.clear();
+      const authedEmail = await getAuthenticatedEmail();
+      const updatedUser = formatUser(res.user, authedEmail);
+      setUser(updatedUser);
+      setActiveProject(res.project);
+      const projs = await batonApi.getProjects().catch(() => []);
+      setProjects(projs);
+      setRequiresProject(false);
+      return res.project;
+    } catch (err: unknown) {
+      const message = err instanceof ApiError ? err.message : "Failed to join project";
       setError(message);
       throw err;
     } finally {
@@ -265,21 +398,62 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const token = getStoredToken();
         if (token) {
           try {
-            const [raw, authenticatedEmail] = await Promise.all([
+            const [raw, authenticatedEmail, projs] = await Promise.all([
               batonApi.getMe(),
               getAuthenticatedEmail(),
+              batonApi.getProjects().catch(() => []),
             ]);
-            if (isMounted) setUser(formatUser(raw, authenticatedEmail));
+            if (isMounted) {
+              const formatted = formatUser(raw, authenticatedEmail);
+              setUser(formatted);
+              setProjects(projs);
+              const active = projs.find((p) => p.id === raw.project_id) || projs[0] || null;
+              setActiveProject(active);
+              setRequiresProject(false);
+            }
             return;
           } catch (e) {
+            try {
+              const projs = await batonApi.getProjects();
+              if (projs.length === 0 && isMounted) {
+                setRequiresProject(true);
+                setProjects([]);
+                return;
+              } else if (projs.length > 0 && isMounted) {
+                // If user has existing projects, restore first active project session seamlessly
+                try {
+                  const switchRes = await batonApi.switchProject(projs[0].id);
+                  setStoredToken(switchRes.token);
+                  const authedEmail = await getAuthenticatedEmail();
+                  setUser(formatUser(switchRes.user, authedEmail));
+                  setProjects(projs);
+                  setActiveProject(switchRes.project || projs[0]);
+                  setRequiresProject(false);
+                  return;
+                } catch {
+                  setProjects(projs);
+                  setRequiresProject(false);
+                }
+              }
+            } catch {
+              // Ignore
+            }
             setStoredToken(null);
-            if (isMounted) setUser(null);
+            if (isMounted) {
+              setUser(null);
+              setActiveProject(null);
+              setProjects([]);
+            }
             if (!(e instanceof ApiError && e.status === 401)) {
               throw e;
             }
           }
         } else {
-          if (isMounted) setUser(null);
+          if (isMounted) {
+            setUser(null);
+            setActiveProject(null);
+            setProjects([]);
+          }
         }
       } catch (err) {
         if (isMounted) {
@@ -329,6 +503,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     setStoredToken(null);
     setUser(null);
+    setProjects([]);
+    setActiveProject(null);
+    setRequiresProject(false);
+    queryClient.clear();
   }, []);
 
   /**
@@ -338,6 +516,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(true);
     try {
       await batonApi.demoReset();
+      queryClient.clear();
       await loginDemo("approver");
     } finally {
       setLoading(false);
@@ -347,6 +526,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const value = useMemo(
     () => ({
       user,
+      projects,
+      activeProject,
+      requiresProject,
       loading,
       error,
       isAuthenticated: !!user,
@@ -354,11 +536,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       register,
       syncSession,
       switchRole,
+      switchProject,
+      createProject,
+      joinProject,
+      fetchProjects,
       logout,
       resetDemo,
       refreshProfile,
     }),
-    [user, loading, error, loginDemo, register, syncSession, switchRole, logout, resetDemo, refreshProfile]
+    [
+      user,
+      projects,
+      activeProject,
+      requiresProject,
+      loading,
+      error,
+      loginDemo,
+      register,
+      syncSession,
+      switchRole,
+      switchProject,
+      createProject,
+      joinProject,
+      fetchProjects,
+      logout,
+      resetDemo,
+      refreshProfile,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

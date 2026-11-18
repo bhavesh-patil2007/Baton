@@ -31,12 +31,52 @@ def _statements(sql: str) -> list[str]:
     return [s.strip() for s in no_comments.split(";") if s.strip()]
 
 
+def _preflight_check(conn) -> None:
+    """Preflight check: verify no conflicting duplicate emails across distinct member identities."""
+    try:
+        rows = conn.exec_driver_sql(
+            "select lower(trim(email)) as em, count(distinct id) as cnt "
+            "from members where email is not null and trim(email) != '' "
+            "group by lower(trim(email)) having count(distinct id) > 1"
+        ).mappings().all()
+        if rows:
+            conflicts = [r["em"] for r in rows]
+            raise RuntimeError(
+                f"Multi-project migration aborted: duplicate email(s) across distinct user IDs: {conflicts}. "
+                "Administrative resolution required. Identities will not be merged automatically."
+            )
+    except Exception as exc:
+        if "no such table" in str(exc).lower() or "does not exist" in str(exc).lower():
+            pass
+        elif isinstance(exc, RuntimeError):
+            raise
+        else:
+            pass
+
+
+def _ensure_columns(conn) -> None:
+    """Ensure required columns exist on legacy tables before scripts run."""
+    try:
+        conn.exec_driver_sql("alter table projects add column owner_id text")
+    except Exception:
+        pass
+    try:
+        conn.exec_driver_sql("alter table invitations add column project_id text references projects(id)")
+    except Exception:
+        pass
+
+
 def apply_schema(engine: Engine | None = None) -> list[str]:
     """Apply db/schema/*.sql in filename order. Every file is idempotent, so this is safe on every start."""
     engine = engine or get_engine()
     applied = []
+    with engine.begin() as conn:
+        _preflight_check(conn)
+        _ensure_columns(conn)
+
     for path in sorted(get_settings().schema_dir.glob("*.sql")):
         with engine.begin() as conn:
+            _ensure_columns(conn)
             for statement in _statements(path.read_text(encoding="utf-8")):
                 conn.exec_driver_sql(statement)
         applied.append(path.name)

@@ -2,6 +2,8 @@ import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
+const targetUrl = process.env.VITE_API_URL || "http://127.0.0.1:8001";
+
 export default defineConfig({
   plugins: [react()],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
@@ -11,16 +13,17 @@ export default defineConfig({
       "Cache-Control": "no-store, no-cache, must-revalidate",
     },
     proxy: {
-      "/health": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/auth": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/me": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/claims": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/review": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/risk-radar": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/timeline": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/delivery-status": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/gaps": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/demo": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/health": { target: targetUrl, changeOrigin: true },
+      "/auth": { target: targetUrl, changeOrigin: true },
+      "/me": { target: targetUrl, changeOrigin: true },
+      "/projects": { target: targetUrl, changeOrigin: true },
+      "/claims": { target: targetUrl, changeOrigin: true },
+      "/review": { target: targetUrl, changeOrigin: true },
+      "/risk-radar": { target: targetUrl, changeOrigin: true },
+      "/timeline": { target: targetUrl, changeOrigin: true },
+      "/delivery-status": { target: targetUrl, changeOrigin: true },
+      "/gaps": { target: targetUrl, changeOrigin: true },
+      "/demo": { target: targetUrl, changeOrigin: true },
     },
   },
   build: {

@@ -10,7 +10,7 @@ const defaultHost =
     : "localhost";
 
 let activeApiBaseUrl: string = (
-  import.meta.env.VITE_API_URL ?? `http://${defaultHost}:8000`
+  import.meta.env.VITE_API_URL ?? `http://${defaultHost}:8001`
 ).replace(/\/$/, "");
 
 export function getApiBaseUrl(): string {
@@ -24,11 +24,11 @@ export function setApiBaseUrl(url: string): void {
 export const API_BASE_URL = activeApiBaseUrl;
 
 function getAlternativeUrl(url: string): string | null {
-  if (url.includes("//localhost:8000")) {
-    return url.replace("//localhost:8000", "//127.0.0.1:8000");
+  if (url.includes("//localhost:")) {
+    return url.replace("//localhost:", "//127.0.0.1:");
   }
-  if (url.includes("//127.0.0.1:8000")) {
-    return url.replace("//127.0.0.1:8000", "//localhost:8000");
+  if (url.includes("//127.0.0.1:")) {
+    return url.replace("//127.0.0.1:", "//localhost:");
   }
   return null;
 }
@@ -86,10 +86,28 @@ export interface SessionSyncPayload {
 export interface SessionSyncResponse {
   registered: boolean;
   requires_role?: boolean;
+  has_projects?: boolean;
+  requires_project?: boolean;
   token?: string;
   user?: UserProfile;
   user_id?: string;
   email?: string;
+  projects?: ProjectItem[];
+  active_project_id?: string;
+}
+
+export interface ProjectItem {
+  id: string;
+  name: string;
+  role: Role;
+  owner_id?: string;
+  active?: boolean;
+}
+
+export interface SwitchProjectResponse {
+  token: string;
+  user: UserProfile;
+  project: ProjectItem;
 }
 
 export interface ValidateInvitationResponse {
@@ -99,9 +117,24 @@ export interface ValidateInvitationResponse {
   detail?: string;
 }
 
+export interface InvitationItem {
+  id: string;
+  project_id: string;
+  code: string;
+  role: Role;
+  email?: string | null;
+  status: "active" | "redeemed" | "used" | "revoked" | string;
+  created_at: string;
+  used_by?: string | null;
+  used_by_name?: string | null;
+  used_at?: string | null;
+}
+
 export interface DemoLoginResponse {
   token: string;
   user: UserProfile;
+  projects?: ProjectItem[];
+  active_project_id?: string;
 }
 
 export interface EvidenceItem {
@@ -418,10 +451,23 @@ export const batonApi = {
     ),
   validateInvitation: (code: string) =>
     apiClient.get<ValidateInvitationResponse>(`/auth/invitations/validate?code=${encodeURIComponent(code)}`),
-  createInvitation: (role: Role = "approver", email?: string) =>
-    apiClient.post<{ id: string; code: string; role: Role; email?: string; status: string }>("/auth/invitations", { role, email }),
+  createInvitation: (role: Role = "approver", email?: string, projectId?: string) =>
+    apiClient.post<InvitationItem>(projectId ? `/projects/${projectId}/invitations` : "/auth/invitations", { role, email }),
+  getInvitations: (projectId?: string) =>
+    apiClient.get<InvitationItem[]>(projectId ? `/projects/${projectId}/invitations` : "/auth/invitations"),
+  revokeInvitation: (id: string) =>
+    apiClient.post<{ status: string; id: string }>(`/auth/invitations/${id}/revoke`),
   demoReset: () =>
     apiClient.post<{ status: string; project_id: string }>("/demo/reset"),
+
+  // Projects & Multi-Project
+  getProjects: () => apiClient.get<ProjectItem[]>("/projects"),
+  createProject: (name: string) =>
+    apiClient.post<{ project: ProjectItem; token: string; user: UserProfile }>("/projects", { name }),
+  joinProject: (invitation_code: string) =>
+    apiClient.post<{ project: ProjectItem; token: string; user: UserProfile }>("/projects/join", { invitation_code }),
+  switchProject: (project_id: string) =>
+    apiClient.post<SwitchProjectResponse>("/auth/switch-project", { project_id }),
 
   // Claims & Ledger
   getClaims: () => apiClient.get<ClaimsListResponse>("/claims"),

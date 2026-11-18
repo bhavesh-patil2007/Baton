@@ -23,6 +23,7 @@ import {
 import { DashboardLayoutLight } from "../components/layout/DashboardLayoutLight";
 import { FallbackHero } from "../components/hero/FallbackHero";
 import { DocumentUploader } from "../components/upload/DocumentUploader";
+import { InviteMemberModal } from "../components/invitation/InviteMemberModal";
 import {
   CloudUpload,
   X,
@@ -37,6 +38,7 @@ import {
   Share2,
   Compass,
   CheckSquare,
+  UserPlus,
 } from "lucide-react";
 
 const ThreeHeroNode = React.lazy(() =>
@@ -44,7 +46,7 @@ const ThreeHeroNode = React.lazy(() =>
 );
 
 export const DashboardLight: React.FC<{ withLayout?: boolean }> = ({ withLayout = false }) => {
-  const { user } = useAuth();
+  const { user, activeProject } = useAuth();
   const navigate = useNavigate();
 
   // Dynamic Live State from Backend APIs
@@ -55,6 +57,7 @@ export const DashboardLight: React.FC<{ withLayout?: boolean }> = ({ withLayout 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [uploadModalOpen, setUploadModalOpen] = useState<boolean>(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState<boolean>(false);
 
   // Fetch live backend data concurrently
   const loadDashboardData = async () => {
@@ -138,10 +141,10 @@ export const DashboardLight: React.FC<{ withLayout?: boolean }> = ({ withLayout 
   const roleQuickActions = useMemo(() => {
     if (user?.role === "approver") {
       return [
+        { name: "Invite Member", onClick: () => setInviteModalOpen(true), icon: UserPlus },
         { name: "Add Source", path: "/sources", icon: Plus },
         { name: "Reconstruct", path: "/ledger", icon: RotateCcw },
         { name: "Export Plan", path: "/handover", icon: Download },
-        { name: "Access ACL", path: "/access", icon: ShieldCheck },
       ];
     }
     if (user?.role === "leaver") {
@@ -272,6 +275,17 @@ export const DashboardLight: React.FC<{ withLayout?: boolean }> = ({ withLayout 
               <Share2 className="w-4 h-4 text-purple-600" />
               <span>View Knowledge Graph</span>
             </button>
+
+            {user?.role === "approver" && (
+              <button
+                type="button"
+                onClick={() => setInviteModalOpen(true)}
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-semibold text-xs sm:text-sm shadow-xs hover:border-indigo-300 transition-all cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4 text-indigo-600" />
+                <span>Invite Member</span>
+              </button>
+            )}
 
             {(user?.role === "approver" || user?.role === "leaver") && (
               <button
@@ -429,9 +443,20 @@ export const DashboardLight: React.FC<{ withLayout?: boolean }> = ({ withLayout 
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
               </svg>
             </div>
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-              → 0%
-            </span>
+            {user?.role === "approver" ? (
+              <button
+                type="button"
+                onClick={() => setInviteModalOpen(true)}
+                className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition-colors cursor-pointer"
+              >
+                <UserPlus className="w-3 h-3 text-purple-600" />
+                <span>Invite Member</span>
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                → 0%
+              </span>
+            )}
           </div>
 
           <div className="mt-4">
@@ -771,7 +796,7 @@ export const DashboardLight: React.FC<{ withLayout?: boolean }> = ({ withLayout 
                 <button
                   key={action.name}
                   type="button"
-                  onClick={() => navigate(action.path)}
+                  onClick={() => (action.onClick ? action.onClick() : action.path ? navigate(action.path) : undefined)}
                   className="p-2 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-200 flex flex-col items-center gap-1 text-slate-700 hover:text-purple-700 transition-all group cursor-pointer"
                 >
                   <ActionIcon className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
@@ -782,6 +807,14 @@ export const DashboardLight: React.FC<{ withLayout?: boolean }> = ({ withLayout 
           </div>
         </div>
       </section>
+
+      {/* Invite Member Modal */}
+      <InviteMemberModal
+        isOpen={inviteModalOpen}
+        onClose={() => setInviteModalOpen(false)}
+        projectId={user?.project_id}
+        projectName={activeProject?.name || "Active Project"}
+      />
     </div>
   );
 

@@ -18,6 +18,7 @@ import os
 import re
 import time
 import urllib.request
+import uuid
 from dataclasses import dataclass
 
 import jwt
@@ -45,6 +46,14 @@ _UUID_RE = re.compile(
 
 
 @dataclass(frozen=True)
+class AccountUser:
+    id: str
+    name: str
+    email: str | None = None
+    is_demo: bool = False
+
+
+@dataclass(frozen=True)
 class User:
     id: str
     name: str
@@ -60,6 +69,18 @@ def make_token(user: User) -> str:
         "sub": user.id,
         "project_id": user.project_id,
         "role": user.role,
+        "name": user.name,
+        "email": user.email,
+        "is_demo": user.is_demo,
+        "exp": int(time.time()) + settings.jwt_ttl_minutes * 60,
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
+
+
+def make_account_token(user: AccountUser) -> str:
+    settings = get_settings()
+    payload = {
+        "sub": user.id,
         "name": user.name,
         "email": user.email,
         "is_demo": user.is_demo,
@@ -89,9 +110,7 @@ def _provision_workspace(user_id: str, claims: dict, session: Session, role: str
             status_code=403,
             detail="Approver access requires invitation-controlled registration via /auth/register.",
         )
-    project_id = f"proj-{user_id}"
-    # Derive a human-readable display name from the JWT claims (Supabase
-    # populates ``email``, ``name``, or ``user_metadata.full_name``).
+    project_id = f"proj-{uuid.uuid4()}"
     email = claims.get("email") or claims.get("user_metadata", {}).get("email", "")
     full_name = (
         claims.get("name")
@@ -100,7 +119,6 @@ def _provision_workspace(user_id: str, claims: dict, session: Session, role: str
         or "User"
     )
 
-    # --- project (workspace) ---
     session.execute(
         text(
             "insert into projects (id, name, created_at) "
@@ -110,7 +128,26 @@ def _provision_workspace(user_id: str, claims: dict, session: Session, role: str
         {"id": project_id, "name": f"{full_name}'s Workspace", "created_at": _now_iso()},
     )
 
-    # --- member with non-approver role (approver requires invitation registration) ---
+    try:
+        session.execute(
+            text(
+                "insert into users (id, email, name, is_demo, created_at) "
+                "values (:id, :email, :name, 0, :now) "
+                "on conflict (id) do nothing"
+            ),
+            {"id": user_id, "email": email or None, "name": full_name, "now": _now_iso()},
+        )
+        session.execute(
+            text(
+                "insert into project_memberships (user_id, project_id, role, active, created_at) "
+                "values (:uid, :pid, :role, 1, :now) "
+                "on conflict (user_id, project_id) do nothing"
+            ),
+            {"uid": user_id, "pid": project_id, "role": role, "now": _now_iso()},
+        )
+    except Exception:
+        pass
+
     try:
         session.execute(
             text(
@@ -131,27 +168,71 @@ def _provision_workspace(user_id: str, claims: dict, session: Session, role: str
         )
     session.commit()
 
-    # Re-read to ensure we return the canonical persisted row (handles race).
+    return User(
+        id=user_id,
+        name=full_name,
+        role=role,
+        project_id=project_id,
+        email=email or None,
+        is_demo=False,
+    )
+
+
+def current_account_user(
+    authorization: str | None = Header(default=None),
+    session: Session = Depends(get_session),
+) -> AccountUser:
+    """Validate Bearer token and return AccountUser (even if user belongs to 0 projects)."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise _unauthorised("Sign in first.")
+    token = authorization.split(" ", 1)[1].strip()
     try:
-        row = session.execute(
-            text("select id, name, role, project_id, email, is_demo from members where id = :id"),
-            {"id": user_id},
+        claims = jwt.decode(token, get_settings().jwt_secret, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        try:
+            claims = verify_supabase_token(token)
+        except Exception:
+            raise _unauthorised("Your session expired or is invalid. Please sign in again.") from None
+
+    uid = claims.get("sub") or ""
+    try:
+        u_row = session.execute(
+            text("select id, name, email, is_demo from users where id = :id"),
+            {"id": uid},
         ).mappings().first()
     except Exception:
-        row = session.execute(
-            text("select id, name, role, project_id from members where id = :id"),
-            {"id": user_id},
+        u_row = None
+
+    if u_row:
+        return AccountUser(
+            id=u_row["id"],
+            name=u_row["name"],
+            email=u_row.get("email"),
+            is_demo=bool(u_row.get("is_demo", 0)),
+        )
+
+    try:
+        m_row = session.execute(
+            text("select id, name, email, is_demo, active from members where id = :id"),
+            {"id": uid},
         ).mappings().first()
-    if row is None:
-        raise _unauthorised("Workspace provisioning failed. Please retry.")
-    return User(
-        id=row["id"],
-        name=row["name"],
-        role=row["role"],
-        project_id=row["project_id"],
-        email=row.get("email"),
-        is_demo=bool(row.get("is_demo", 0)),
-    )
+    except Exception:
+        m_row = None
+
+    if m_row and m_row["active"]:
+        return AccountUser(
+            id=m_row["id"],
+            name=m_row["name"],
+            email=m_row.get("email"),
+            is_demo=bool(m_row.get("is_demo", 0)),
+        )
+
+    email = claims.get("email") or claims.get("user_metadata", {}).get("email")
+    name = claims.get("name") or claims.get("user_metadata", {}).get("full_name") or (email.split("@")[0] if email else "User")
+    if uid:
+        return AccountUser(id=uid, name=name, email=email, is_demo=False)
+
+    raise _unauthorised("Account not found. Please sign in again.")
 
 
 def current_user(authorization: str | None = Header(default=None), session: Session = Depends(get_session)) -> User:
@@ -168,25 +249,94 @@ def current_user(authorization: str | None = Header(default=None), session: Sess
         claims = jwt.decode(token, get_settings().jwt_secret, algorithms=["HS256"])
     except jwt.PyJWTError:
         raise _unauthorised("Your session expired or is invalid. Please sign in again.") from None
+
+    uid = claims.get("sub") or ""
+    active_pid = claims.get("project_id")
+
+    # 1. Authoritative project memberships lookup
+    has_any_pm = False
     try:
-        row = session.execute(
-            text("select id, name, role, project_id, active, email, is_demo from members where id = :id"),
-            {"id": claims.get("sub")},
-        ).mappings().first()
+        has_any_pm = session.execute(
+            text("select 1 from project_memberships where user_id = :uid limit 1"),
+            {"uid": uid},
+        ).scalar() is not None
     except Exception:
-        row = session.execute(
-            text("select id, name, role, project_id, active from members where id = :id"),
-            {"id": claims.get("sub")},
-        ).mappings().first()
-    if row is None or not row["active"]:
+        has_any_pm = False
+
+    if has_any_pm:
+        # project_memberships is strictly authoritative; legacy members cannot bypass it
+        if active_pid:
+            row = session.execute(
+                text("""
+                    select u.id, u.name, u.email, u.is_demo, pm.role, pm.project_id, pm.active
+                    from users u
+                    join project_memberships pm on pm.user_id = u.id
+                    where u.id = :uid and pm.project_id = :pid
+                """),
+                {"uid": uid, "pid": active_pid},
+            ).mappings().first()
+        else:
+            row = session.execute(
+                text("""
+                    select u.id, u.name, u.email, u.is_demo, pm.role, pm.project_id, pm.active
+                    from users u
+                    join project_memberships pm on pm.user_id = u.id
+                    where u.id = :uid
+                    order by pm.created_at asc
+                """),
+                {"uid": uid},
+            ).mappings().first()
+
+        if row is None or not row["active"]:
+            raise _unauthorised("This account no longer has access to the project.")
+
+        # Respect immediate revocation if legacy members table has active = 0
+        try:
+            m_check = session.execute(
+                text("select active from members where id = :uid and (project_id = :pid or project_id is null)"),
+                {"uid": uid, "pid": row["project_id"]},
+            ).mappings().first()
+            if m_check is not None and not m_check["active"]:
+                raise _unauthorised("This account no longer has access to the project.")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+        return User(
+            id=row["id"],
+            name=row["name"],
+            role=row["role"],
+            project_id=row["project_id"],
+            email=row.get("email"),
+            is_demo=bool(row.get("is_demo", 0)),
+        )
+
+    # 2. Legacy members table fallback (strictly for unmigrated databases without project_memberships)
+    try:
+        if active_pid:
+            m_row = session.execute(
+                text("select id, name, role, project_id, active, email, is_demo from members where id = :id and project_id = :pid"),
+                {"id": uid, "pid": active_pid},
+            ).mappings().first()
+        else:
+            m_row = session.execute(
+                text("select id, name, role, project_id, active, email, is_demo from members where id = :id"),
+                {"id": uid},
+            ).mappings().first()
+    except Exception:
+        m_row = None
+
+    if m_row is None or not m_row["active"]:
         raise _unauthorised("This account no longer has access to the project.")
+
     return User(
-        id=row["id"],
-        name=row["name"],
-        role=row["role"],
-        project_id=row["project_id"],
-        email=row.get("email"),
-        is_demo=bool(row.get("is_demo", 0)),
+        id=m_row["id"],
+        name=m_row["name"],
+        role=m_row["role"],
+        project_id=m_row["project_id"],
+        email=m_row.get("email"),
+        is_demo=bool(m_row.get("is_demo", 0)),
     )
 
 
