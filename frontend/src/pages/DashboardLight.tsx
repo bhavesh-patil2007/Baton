@@ -138,31 +138,31 @@ export const DashboardLight: React.FC<{ withLayout?: boolean }> = ({ withLayout 
   const roleQuickActions = useMemo(() => {
     if (user?.role === "approver") {
       return [
-        { name: "Add Source", path: "/sources", icon: Plus },
+        { name: "Sources", path: "/sources", icon: Plus },
         { name: "Reconstruct", path: "/ledger", icon: RotateCcw },
-        { name: "Export Plan", path: "/handover", icon: Download },
-        { name: "Access ACL", path: "/access", icon: ShieldCheck },
+        { name: "Handover", path: "/handover", icon: Download },
+        { name: "Access Control", path: "/access", icon: ShieldCheck },
       ];
     }
     if (user?.role === "leaver") {
       return [
-        { name: "Add Source", path: "/sources", icon: Plus },
-        { name: "Handover Plan", path: "/handover", icon: Download },
+        { name: "Sources", path: "/sources", icon: Plus },
+        { name: "Handover", path: "/handover", icon: Download },
         { name: "Knowledge Graph", path: "/graph", icon: Share2 },
-        { name: "Ledger", path: "/ledger", icon: RotateCcw },
+        { name: "Claim Ledger", path: "/ledger", icon: RotateCcw },
       ];
     }
     if (user?.role === "incoming_maintainer") {
       return [
-        { name: "Handover Plan", path: "/handover", icon: Download },
+        { name: "Handover", path: "/handover", icon: Download },
         { name: "Knowledge Graph", path: "/graph", icon: Share2 },
-        { name: "Ledger", path: "/ledger", icon: RotateCcw },
+        { name: "Claim Ledger", path: "/ledger", icon: RotateCcw },
         { name: "Risk Radar", path: "/risk", icon: ShieldCheck },
       ];
     }
     return [
-      { name: "Handover Plan", path: "/handover", icon: Download },
-      { name: "Audit Ledger", path: "/ledger", icon: RotateCcw },
+      { name: "Handover", path: "/handover", icon: Download },
+      { name: "Claim Ledger", path: "/ledger", icon: RotateCcw },
       { name: "Knowledge Graph", path: "/graph", icon: Share2 },
       { name: "Overview", path: "/dashboard", icon: Compass },
     ];
@@ -772,7 +772,7 @@ export const DashboardLight: React.FC<{ withLayout?: boolean }> = ({ withLayout 
                   key={action.name}
                   type="button"
                   onClick={() => navigate(action.path)}
-                  className="p-2 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-200 flex flex-col items-center gap-1 text-slate-700 hover:text-purple-700 transition-all group cursor-pointer"
+                  className="p-2 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-200 flex flex-col items-center gap-1 text-slate-700 hover:text-purple-700 active:scale-[0.98] transition-all duration-150 group cursor-pointer"
                 >
                   <ActionIcon className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
                   <span className="text-[10px] font-bold">{action.name}</span>

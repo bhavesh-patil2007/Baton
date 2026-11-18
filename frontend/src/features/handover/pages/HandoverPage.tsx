@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/app/auth";
 import { useLatestVersion } from "@/features/review/public";
 import { SourceDrawer } from "@/features/sources/public";
@@ -24,7 +23,6 @@ type Tab = "handover" | "plan";
 
 export function HandoverPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { version, isLoading: versionLoading, error: versionError, refetch } = useLatestVersion();
   const [tab, setTab] = useState<Tab>("handover");
@@ -82,28 +80,16 @@ export function HandoverPage() {
   const mutationError = (ack.error ?? respond.error) as Error | null;
   return (
     <div className="space-y-6 max-w-7xl mx-auto w-full pb-12 animate-in fade-in duration-300">
-      {/* Header with Back Navigation and High-Contrast Typography */}
-      <header className="flex items-start sm:items-center gap-3 sm:gap-4">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="p-2 sm:p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 shadow-sm transition-all dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10 cursor-pointer flex-shrink-0"
-          aria-label="Go back"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-        </button>
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-            Handover for Campus Event Portal
-          </h1>
-          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-gray-300">
-            Version {version.version_id}, approved {version.approved_at ? new Date(version.approved_at).toLocaleDateString() : "recently"}
-            {version.snapshot_hash ? `, snapshot ${version.snapshot_hash.replace("sha256:", "").slice(0, 10)}` : ""}.
-            Every claim links to its source quote.
-          </p>
-        </div>
+      {/* Header with High-Contrast Typography */}
+      <header>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+          Handover for Campus Event Portal
+        </h1>
+        <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-gray-300">
+          Version {version.version_id}, approved {version.approved_at ? new Date(version.approved_at).toLocaleDateString() : "recently"}
+          {version.snapshot_hash ? `, snapshot ${version.snapshot_hash.replace("sha256:", "").slice(0, 10)}` : ""}.
+          Every claim links to its source quote.
+        </p>
       </header>
 
       {view.data && !view.data.can_acknowledge && (
