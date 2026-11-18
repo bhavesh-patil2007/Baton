@@ -16,10 +16,20 @@ def seed_demo(session: Session) -> None:
     for user in SEED_USERS:
         present = session.execute(text("select 1 from members where id = :id"), {"id": user["id"]}).first()
         if not present:
-            session.execute(
-                text("insert into members (id, project_id, name, role, active) values (:id, :project_id, :name, :role, 1)"),
-                {**user, "project_id": DEMO_PROJECT_ID},
-            )
+            try:
+                session.execute(
+                    text("insert into members (id, project_id, name, role, active, is_demo) values (:id, :project_id, :name, :role, 1, 1)"),
+                    {**user, "project_id": DEMO_PROJECT_ID},
+                )
+            except Exception:
+                session.execute(
+                    text("insert into members (id, project_id, name, role, active) values (:id, :project_id, :name, :role, 1)"),
+                    {**user, "project_id": DEMO_PROJECT_ID},
+                )
         else:
-            session.execute(text("update members set active = 1, role = :role where id = :id"), user)
+            try:
+                session.execute(text("update members set active = 1, role = :role, is_demo = 1 where id = :id"), user)
+            except Exception:
+                session.execute(text("update members set active = 1, role = :role where id = :id"), user)
+
     session.commit()

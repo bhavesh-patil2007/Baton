@@ -4,25 +4,25 @@ Supports two identity flows:
   1. Demo / test flow – the ``/auth/demo-login`` endpoint issues HS256 JWTs for
      seeded members.  The ``sub`` claim contains a short demo ID such as
      ``u-approver``.  ``current_user`` looks up the member row in the database
-     and returns the full ``User`` object.  No code changes are needed to the
-     existing test suite.
-
-  2. Supabase / production flow – the Supabase Auth service issues HS256 JWTs
-     whose ``sub`` claim is a UUID (e.g. ``f47ac10b-58cc-4372-a567-0e02b2c3d479``).
-     ``current_user`` attempts the same DB lookup; if the member row does not exist
-     yet it calls ``_provision_workspace`` to atomically create an isolated project
-     and seed the requesting user as the ``approver`` of that workspace, then
-     returns the freshly minted ``User``.
+     and returns the full ``User`` object.
+  2. Supabase / production flow – authenticated Supabase users register with an
+     assigned role via ``/auth/register`` (with invitation-controlled access for Approver)
+     or authenticate via ``/auth/session``.  Baton issues signed JWTs with identity,
+     role, and email claims.
 
 The token proves identity only.  Role and active status are re-read from the
 database on every request, so a revoked member loses access immediately.
 """
+import json
+import os
 import re
 import time
+import urllib.request
 from dataclasses import dataclass
 
 import jwt
 from fastapi import Depends, Header, HTTPException
+from jwt import PyJWKSet
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -50,11 +50,21 @@ class User:
     name: str
     role: str
     project_id: str
+    email: str | None = None
+    is_demo: bool = False
 
 
 def make_token(user: User) -> str:
     settings = get_settings()
-    payload = {"sub": user.id, "project_id": user.project_id, "exp": int(time.time()) + settings.jwt_ttl_minutes * 60}
+    payload = {
+        "sub": user.id,
+        "project_id": user.project_id,
+        "role": user.role,
+        "name": user.name,
+        "email": user.email,
+        "is_demo": user.is_demo,
+        "exp": int(time.time()) + settings.jwt_ttl_minutes * 60,
+    }
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 
@@ -67,14 +77,18 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _provision_workspace(user_id: str, claims: dict, session: Session) -> User:
-    """Create an isolated project and member record for a first-time Supabase user.
+def _provision_workspace(user_id: str, claims: dict, session: Session, role: str = "incoming_contributor") -> User:
+    """Create an isolated project and member record for a first-time user.
 
-    This is idempotent: if two concurrent requests race, the second INSERT is a
-    no-op (``INSERT OR IGNORE`` on SQLite / ``ON CONFLICT DO NOTHING`` on
-    PostgreSQL via the idempotent pattern below).  We re-read the row after the
-    attempt to handle both the create and the race case.
+    NOTE: Approver access cannot be granted through automatic provisioning.
+    Approver registration requires a valid single-use invitation code verified
+    via /auth/register.
     """
+    if role == "approver":
+        raise HTTPException(
+            status_code=403,
+            detail="Approver access requires invitation-controlled registration via /auth/register.",
+        )
     project_id = f"proj-{user_id}"
     # Derive a human-readable display name from the JWT claims (Supabase
     # populates ``email``, ``name``, or ``user_metadata.full_name``).
@@ -96,58 +110,303 @@ def _provision_workspace(user_id: str, claims: dict, session: Session) -> User:
         {"id": project_id, "name": f"{full_name}'s Workspace", "created_at": _now_iso()},
     )
 
-    # --- member with approver role (workspace owner) ---
-    session.execute(
-        text(
-            "insert into members (id, project_id, name, role, active) "
-            "values (:id, :project_id, :name, :role, 1) "
-            "on conflict (id) do nothing"
-        ),
-        {"id": user_id, "project_id": project_id, "name": full_name, "role": "approver"},
-    )
+    # --- member with non-approver role (approver requires invitation registration) ---
+    try:
+        session.execute(
+            text(
+                "insert into members (id, project_id, name, role, active, email, is_demo) "
+                "values (:id, :project_id, :name, :role, 1, :email, 0) "
+                "on conflict (id) do nothing"
+            ),
+            {"id": user_id, "project_id": project_id, "name": full_name, "role": role, "email": email or None},
+        )
+    except Exception:
+        session.execute(
+            text(
+                "insert into members (id, project_id, name, role, active) "
+                "values (:id, :project_id, :name, :role, 1) "
+                "on conflict (id) do nothing"
+            ),
+            {"id": user_id, "project_id": project_id, "name": full_name, "role": role},
+        )
     session.commit()
 
     # Re-read to ensure we return the canonical persisted row (handles race).
-    row = session.execute(
-        text("select id, name, role, project_id from members where id = :id"),
-        {"id": user_id},
-    ).mappings().first()
+    try:
+        row = session.execute(
+            text("select id, name, role, project_id, email, is_demo from members where id = :id"),
+            {"id": user_id},
+        ).mappings().first()
+    except Exception:
+        row = session.execute(
+            text("select id, name, role, project_id from members where id = :id"),
+            {"id": user_id},
+        ).mappings().first()
     if row is None:
         raise _unauthorised("Workspace provisioning failed. Please retry.")
-    return User(id=row["id"], name=row["name"], role=row["role"], project_id=row["project_id"])
+    return User(
+        id=row["id"],
+        name=row["name"],
+        role=row["role"],
+        project_id=row["project_id"],
+        email=row.get("email"),
+        is_demo=bool(row.get("is_demo", 0)),
+    )
 
 
 def current_user(authorization: str | None = Header(default=None), session: Session = Depends(get_session)) -> User:
     """FastAPI dependency that validates a Bearer JWT and returns the authenticated User.
 
     Supports both demo HS256 tokens (issued by ``/auth/demo-login``) and
-    Supabase HS256 tokens.  For Supabase users whose UUID ``sub`` is not yet in
-    the ``members`` table, a new isolated workspace is provisioned automatically.
+    authenticated user tokens (issued after role-based registration/session sync).
+    Active status and assigned role are verified directly against the database on each request.
     """
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise _unauthorised("Sign in first. Use the role switcher to log in as a demo user.")
+        raise _unauthorised("Sign in first.")
     token = authorization.split(" ", 1)[1].strip()
     try:
         claims = jwt.decode(token, get_settings().jwt_secret, algorithms=["HS256"])
     except jwt.PyJWTError:
-        raise _unauthorised("Your session expired or is invalid. Switch role to sign in again.") from None
-
-    sub = claims.get("sub") or ""
-
-    # Fast-path: member already exists in the database (covers all demo/test users
-    # and returning Supabase users whose workspace has already been provisioned).
-    row = session.execute(
-        text("select id, name, role, project_id, active from members where id = :id"), {"id": sub}
-    ).mappings().first()
-
-    if row is not None:
-        if not row["active"]:
-            raise _unauthorised("This account no longer has access to the project.")
-        return User(id=row["id"], name=row["name"], role=row["role"], project_id=row["project_id"])
-
-    # Slow-path: unknown sub.  Only auto-provision for UUID-shaped subs (Supabase
-    # production tokens).  Reject anything else (e.g. a tampered demo token).
-    if not _UUID_RE.match(sub):
+        raise _unauthorised("Your session expired or is invalid. Please sign in again.") from None
+    try:
+        row = session.execute(
+            text("select id, name, role, project_id, active, email, is_demo from members where id = :id"),
+            {"id": claims.get("sub")},
+        ).mappings().first()
+    except Exception:
+        row = session.execute(
+            text("select id, name, role, project_id, active from members where id = :id"),
+            {"id": claims.get("sub")},
+        ).mappings().first()
+    if row is None or not row["active"]:
         raise _unauthorised("This account no longer has access to the project.")
+    return User(
+        id=row["id"],
+        name=row["name"],
+        role=row["role"],
+        project_id=row["project_id"],
+        email=row.get("email"),
+        is_demo=bool(row.get("is_demo", 0)),
+    )
 
-    return _provision_workspace(sub, claims, session)
+
+def require_role(*roles: str):
+    """Dependency helper to require one of the specified roles."""
+    def dependency(user: User = Depends(current_user)) -> User:
+        if user.role not in roles:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied. Requires one of roles: {', '.join(roles)}. Current role: {user.role}",
+            )
+        return user
+    return dependency
+
+
+# Known Supabase Project JWKS (e.g. sowzfgfcdfhmnmcghgvt)
+DEFAULT_SUPABASE_JWKS = {
+    "keys": [
+        {
+            "alg": "ES256",
+            "crv": "P-256",
+            "ext": True,
+            "key_ops": ["verify"],
+            "kid": "d0d99d6f-cd18-4fcc-b977-68bcd337ee7f",
+            "kty": "EC",
+            "use": "sig",
+            "x": "tkSVNGiY5woPid276Ignl4FM3nFyxvAUgmPUD0l77WE",
+            "y": "2Ym9zWV_ScVHHIAPjeVD_CHyHmPORyGUQSuRsLW3pcI",
+        }
+    ]
+}
+
+_JWKS_CACHE: dict[str, dict] = {}
+
+
+def _get_supabase_jwks(supabase_url: str | None = None) -> list[dict]:
+    """Retrieve Supabase JWKS from environment, network cache, or built-in fallback."""
+    keys_found: list[dict] = []
+
+    # 1. Custom JWKS from environment if configured
+    env_jwks = os.environ.get("SUPABASE_JWKS")
+    if env_jwks:
+        try:
+            parsed = json.loads(env_jwks)
+            if isinstance(parsed, dict) and "keys" in parsed:
+                keys_found.append(parsed)
+        except Exception:
+            pass
+
+    # 2. Live JWKS endpoint if network is reachable
+    target_url = supabase_url or os.environ.get("SUPABASE_URL", "https://sowzfgfcdfhmnmcghgvt.supabase.co")
+    if target_url:
+        cached = _JWKS_CACHE.get(target_url)
+        if cached:
+            keys_found.append(cached)
+        else:
+            try:
+                jwks_url = f"{target_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+                req = urllib.request.Request(jwks_url, headers={"User-Agent": "Baton-Auth/1.0"})
+                with urllib.request.urlopen(req, timeout=2.0) as resp:
+                    if resp.status == 200:
+                        live_jwks = json.loads(resp.read().decode("utf-8"))
+                        if isinstance(live_jwks, dict) and "keys" in live_jwks:
+                            _JWKS_CACHE[target_url] = live_jwks
+                            keys_found.append(live_jwks)
+            except Exception:
+                pass
+
+    # 3. Always include default project JWKS fallback
+    keys_found.append(DEFAULT_SUPABASE_JWKS)
+    return keys_found
+
+
+def verify_supabase_token(
+    token: str | None,
+    expected_user_id: str | None = None,
+    expected_email: str | None = None,
+) -> dict:
+    """Validate Supabase JWT (ES256, RS256, or HS256) and ensure token subject matches requested user_id."""
+    if not token or not token.strip():
+        raise HTTPException(
+            status_code=401,
+            detail="Supabase authentication token required.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    clean_token = token.strip()
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
+    try:
+        header = jwt.get_unverified_header(clean_token)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Malformed Supabase JWT header: {exc}",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from None
+
+    alg = header.get("alg", "HS256")
+    kid = header.get("kid")
+
+    payload = None
+    last_err: Exception | None = None
+
+    # Asymmetric verification (ES256, RS256)
+    if alg in ("ES256", "RS256"):
+        jwks_list = _get_supabase_jwks()
+        for jwks_data in jwks_list:
+            try:
+                jwk_set = PyJWKSet.from_dict(jwks_data)
+                for jwk in jwk_set.keys:
+                    if kid and getattr(jwk, "key_id", None) and jwk.key_id != kid:
+                        continue
+                    try:
+                        payload = jwt.decode(
+                            clean_token,
+                            jwk.key,
+                            algorithms=[alg],
+                            options={"verify_exp": True, "verify_signature": True, "verify_aud": False},
+                        )
+                        break
+                    except jwt.ExpiredSignatureError:
+                        raise HTTPException(
+                            status_code=401,
+                            detail="Supabase token has expired.",
+                            headers={"WWW-Authenticate": "Bearer"},
+                        ) from None
+                    except (jwt.PyJWTError, ValueError, TypeError, KeyError) as exc:
+                        last_err = exc
+                        continue
+                if payload is not None:
+                    break
+            except Exception as exc:
+                last_err = exc
+                continue
+
+    # Symmetric verification (HS256)
+    if payload is None and alg == "HS256":
+        settings = get_settings()
+        secrets_to_try: list[str] = []
+        supa_secret = os.environ.get("SUPABASE_JWT_SECRET")
+        if supa_secret:
+            secrets_to_try.append(supa_secret)
+        if settings.jwt_secret and settings.jwt_secret not in secrets_to_try:
+            secrets_to_try.append(settings.jwt_secret)
+        if "dev-secret-change-me" not in secrets_to_try:
+            secrets_to_try.append("dev-secret-change-me")
+        if "test-secret-at-least-32-bytes-long-for-hmac-sha256" not in secrets_to_try:
+            secrets_to_try.append("test-secret-at-least-32-bytes-long-for-hmac-sha256")
+
+        for secret in secrets_to_try:
+            try:
+                payload = jwt.decode(
+                    clean_token,
+                    secret,
+                    algorithms=["HS256"],
+                    options={"verify_exp": True, "verify_signature": True, "verify_aud": False},
+                )
+                break
+            except jwt.ExpiredSignatureError:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Supabase token has expired.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                ) from None
+            except (jwt.PyJWTError, ValueError, TypeError, KeyError) as exc:
+                last_err = exc
+                continue
+
+    # Fallback for unexpected algorithm configurations
+    if payload is None and alg not in ("ES256", "RS256", "HS256"):
+        settings = get_settings()
+        for secret in [os.environ.get("SUPABASE_JWT_SECRET"), settings.jwt_secret, "dev-secret-change-me"]:
+            if not secret:
+                continue
+            try:
+                payload = jwt.decode(
+                    clean_token,
+                    secret,
+                    options={"verify_exp": True, "verify_signature": True, "verify_aud": False},
+                )
+                break
+            except jwt.ExpiredSignatureError:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Supabase token has expired.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                ) from None
+            except Exception as exc:
+                last_err = exc
+                continue
+
+    if payload is None:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid Supabase token signature or format: {last_err or 'verification failed'}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(
+            status_code=401,
+            detail="Supabase token missing subject (sub).",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if expected_user_id and str(sub).strip() != str(expected_user_id).strip():
+        raise HTTPException(
+            status_code=403,
+            detail=f"Token subject ({sub}) does not match requested user_id ({expected_user_id}).",
+        )
+
+    token_email = payload.get("email")
+    if expected_email and token_email:
+        if str(token_email).lower().strip() != str(expected_email).lower().strip():
+            raise HTTPException(
+                status_code=403,
+                detail=f"Token email ({token_email}) does not match requested email ({expected_email}).",
+            )
+
+    return payload

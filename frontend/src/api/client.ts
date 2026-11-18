@@ -9,9 +9,29 @@ const defaultHost =
     ? window.location.hostname
     : "localhost";
 
-export const API_BASE_URL = (
+let activeApiBaseUrl: string = (
   import.meta.env.VITE_API_URL ?? `http://${defaultHost}:8000`
 ).replace(/\/$/, "");
+
+export function getApiBaseUrl(): string {
+  return activeApiBaseUrl;
+}
+
+export function setApiBaseUrl(url: string): void {
+  activeApiBaseUrl = url.replace(/\/$/, "");
+}
+
+export const API_BASE_URL = activeApiBaseUrl;
+
+function getAlternativeUrl(url: string): string | null {
+  if (url.includes("//localhost:8000")) {
+    return url.replace("//localhost:8000", "//127.0.0.1:8000");
+  }
+  if (url.includes("//127.0.0.1:8000")) {
+    return url.replace("//127.0.0.1:8000", "//localhost:8000");
+  }
+  return null;
+}
 
 export const TOKEN_STORAGE_KEY = "baton.token";
 
@@ -41,7 +61,42 @@ export interface UserProfile {
   role: Role;
   project_id: string;
   email?: string;
+  is_demo?: boolean;
   avatar_url?: string;
+}
+
+export interface RegisterPayload {
+  user_id?: string;
+  email: string;
+  name: string;
+  role: Role;
+  invitation_code?: string;
+  project_id?: string;
+  supabase_token?: string;
+}
+
+export interface SessionSyncPayload {
+  user_id: string;
+  email: string;
+  name?: string;
+  project_id?: string;
+  supabase_token?: string;
+}
+
+export interface SessionSyncResponse {
+  registered: boolean;
+  requires_role?: boolean;
+  token?: string;
+  user?: UserProfile;
+  user_id?: string;
+  email?: string;
+}
+
+export interface ValidateInvitationResponse {
+  valid: boolean;
+  role?: Role;
+  email?: string;
+  detail?: string;
 }
 
 export interface DemoLoginResponse {
@@ -209,7 +264,8 @@ interface RequestOptions extends RequestInit {
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { params, timeoutMs = 12000, headers = {}, ...customConfig } = options;
 
-  let url = `${API_BASE_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  const currentBase = getApiBaseUrl();
+  let url = `${currentBase}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
   if (params) {
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => {
@@ -224,9 +280,10 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   }
 
   const token = getStoredToken();
+  const isBodyAllowed = customConfig.method && !["GET", "HEAD"].includes(customConfig.method.toUpperCase());
   const requestHeaders: Record<string, string> = {
-    "Content-Type": "application/json",
     Accept: "application/json",
+    ...(isBodyAllowed && customConfig.body ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(headers as Record<string, string>),
   };
@@ -236,11 +293,32 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
   let response: Response;
   try {
-    response = await fetch(url, {
-      ...customConfig,
-      headers: requestHeaders,
-      signal: controller.signal,
-    });
+    try {
+      response = await fetch(url, {
+        ...customConfig,
+        headers: requestHeaders,
+        signal: controller.signal,
+      });
+    } catch (primaryErr: unknown) {
+      if (primaryErr instanceof Error && primaryErr.name === "AbortError") {
+        throw primaryErr;
+      }
+      const altUrl = getAlternativeUrl(url);
+      if (altUrl) {
+        response = await fetch(altUrl, {
+          ...customConfig,
+          headers: requestHeaders,
+          signal: controller.signal,
+        });
+        if (altUrl.includes("//127.0.0.1:8000")) {
+          setApiBaseUrl(activeApiBaseUrl.replace("//localhost:8000", "//127.0.0.1:8000"));
+        } else if (altUrl.includes("//localhost:8000")) {
+          setApiBaseUrl(activeApiBaseUrl.replace("//127.0.0.1:8000", "//localhost:8000"));
+        }
+      } else {
+        throw primaryErr;
+      }
+    }
   } catch (err: unknown) {
     clearTimeout(timeoutId);
     if (err instanceof Error && err.name === "AbortError") {
@@ -248,7 +326,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     }
     throw new ApiError(
       0,
-      "Cannot connect to Baton API. Verify backend is running on " + API_BASE_URL
+      "Cannot connect to Baton API. Verify backend is running on " + getApiBaseUrl()
     );
   } finally {
     clearTimeout(timeoutId);
@@ -315,9 +393,33 @@ export const apiClient = {
 export const batonApi = {
   // Core & Auth
   getHealth: () => apiClient.get<{ status: string }>("/health"),
+  checkHealth: async (): Promise<{ ok: boolean; status?: string; url: string }> => {
+    try {
+      const res = await apiClient.get<{ status: string }>("/health", { timeoutMs: 3000 });
+      return { ok: true, status: res.status, url: getApiBaseUrl() };
+    } catch {
+      return { ok: false, url: getApiBaseUrl() };
+    }
+  },
   getMe: () => apiClient.get<UserProfile>("/me"),
   demoLogin: (role: Role) =>
     apiClient.post<DemoLoginResponse>("/auth/demo-login", { role }),
+  register: (payload: RegisterPayload) =>
+    apiClient.post<{ token: string; user: UserProfile }>(
+      "/auth/register",
+      payload,
+      payload.supabase_token ? { headers: { Authorization: `Bearer ${payload.supabase_token}` } } : undefined
+    ),
+  syncSession: (payload: SessionSyncPayload) =>
+    apiClient.post<SessionSyncResponse>(
+      "/auth/session",
+      payload,
+      payload.supabase_token ? { headers: { Authorization: `Bearer ${payload.supabase_token}` } } : undefined
+    ),
+  validateInvitation: (code: string) =>
+    apiClient.get<ValidateInvitationResponse>(`/auth/invitations/validate?code=${encodeURIComponent(code)}`),
+  createInvitation: (role: Role = "approver", email?: string) =>
+    apiClient.post<{ id: string; code: string; role: Role; email?: string; status: string }>("/auth/invitations", { role, email }),
   demoReset: () =>
     apiClient.post<{ status: string; project_id: string }>("/demo/reset"),
 

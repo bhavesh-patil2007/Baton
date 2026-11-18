@@ -11,8 +11,23 @@ create table if not exists members (
   project_id text not null references projects(id),
   name text not null,
   role text not null check (role in ('approver', 'leaver', 'incoming_maintainer', 'incoming_contributor')),
-  active integer not null default 1
+  active integer not null default 1,
+  email text,
+  is_demo integer not null default 0
 );
+
+create table if not exists invitations (
+  id text primary key,
+  code text unique not null,
+  role text not null check (role in ('approver', 'leaver', 'incoming_maintainer', 'incoming_contributor')),
+  email text,
+  status text not null default 'active',
+  created_at text not null,
+  used_by text,
+  used_at text
+);
+
+create index if not exists idx_invitations_code on invitations (code);
 
 create table if not exists audit_log (
   id text primary key,
