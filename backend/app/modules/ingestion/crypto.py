@@ -101,7 +101,7 @@ def generate_oauth_state(
     ttl_seconds: int = 900,
 ) -> str:
     """Generate and store a signed, expiring, single-use OAuth state bound to the project."""
-    nonce = secrets.token_urlsafe(32)
+    nonce = secrets.token_hex(32)
     now = datetime.now(UTC)
     expires_at = now + timedelta(seconds=ttl_seconds)
     expires_str = expires_at.isoformat()
@@ -143,11 +143,12 @@ def verify_and_consume_oauth_state(
     if not state_token or not state_token.startswith("baton_"):
         raise OAuthStateError("OAuth state parameter is missing or malformed.")
 
-    parts = state_token.split("_")
-    if len(parts) != 3:
+    without_prefix = state_token[len("baton_"):]
+    rparts = without_prefix.rsplit("_", 1)
+    if len(rparts) != 2:
         raise OAuthStateError("OAuth state format is invalid.")
 
-    _, nonce, sig = parts
+    nonce, sig = rparts
 
     row = session.execute(
         text("""
