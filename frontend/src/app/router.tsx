@@ -30,7 +30,7 @@ const roleGuardedFeatureRoutes = featureRoutes
   .map((route) => {
     let allowed: Role[] | undefined;
     if (route.path === "sources") allowed = ["approver"];
-    else if (route.path === "review") allowed = ["approver"];
+    else if (route.path === "review") allowed = ["approver", "leaver", "incoming_maintainer", "incoming_contributor"];
     else if (route.path === "handover") allowed = ["approver", "incoming_maintainer", "incoming_contributor"];
     else if (route.path === "risk") allowed = ["approver", "leaver", "incoming_maintainer"];
 
