@@ -14,6 +14,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import { SignUp } from "@/pages/SignUp";
 import { Shell } from "./Shell";
 import { Dashboard } from "@/pages/Dashboard";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
 import { GraphPage } from "@/features/graph/pages/GraphPage";
 import { AccessPage } from "@/features/access/pages/AccessPage";
@@ -84,8 +85,8 @@ export const router = createBrowserRouter([
       // Registered feature routes (ledger, risk, review, handover, sources)
       ...featureRoutes.filter((r) => r.path !== "dashboard"),
 
-      // Friendly fallback so no route ever triggers an unstyled 404
-      { path: "*", element: <PlaceholderPage /> },
+      // Friendly 404 page for unmatched routes
+      { path: "*", element: <NotFoundPage /> },
     ],
   },
 ]);
