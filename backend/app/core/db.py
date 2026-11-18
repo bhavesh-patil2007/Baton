@@ -33,14 +33,22 @@ def _statements(sql: str) -> list[str]:
 
 def _preflight_check(conn) -> None:
     """Preflight check: verify no conflicting duplicate emails across distinct member identities."""
+    sql = (
+        "select lower(trim(email)) as em, count(distinct id) as cnt "
+        "from members where email is not null and trim(email) != '' "
+        "group by lower(trim(email)) having count(distinct id) > 1"
+    )
     try:
-        rows = conn.exec_driver_sql(
-            "select lower(trim(email)) as em, count(distinct id) as cnt "
-            "from members where email is not null and trim(email) != '' "
-            "group by lower(trim(email)) having count(distinct id) > 1"
-        ).mappings().all()
-        if rows:
+        if hasattr(conn, "exec_driver_sql"):
+            rows = conn.exec_driver_sql(sql).mappings().all()
             conflicts = [r["em"] for r in rows]
+        else:
+            cur = conn.cursor()
+            cur.execute(sql)
+            rows = cur.fetchall()
+            conflicts = [r[0] if isinstance(r, (tuple, list)) else r["em"] for r in rows]
+
+        if conflicts:
             raise RuntimeError(
                 f"Multi-project migration aborted: duplicate email(s) across distinct user IDs: {conflicts}. "
                 "Administrative resolution required. Identities will not be merged automatically."
@@ -56,12 +64,18 @@ def _preflight_check(conn) -> None:
 
 def _ensure_columns(conn) -> None:
     """Ensure required columns exist on legacy tables before scripts run."""
+    def _exec(sql: str) -> None:
+        if hasattr(conn, "exec_driver_sql"):
+            conn.exec_driver_sql(sql)
+        else:
+            conn.execute(sql)
+
     try:
-        conn.exec_driver_sql("alter table projects add column owner_id text")
+        _exec("alter table projects add column owner_id text")
     except Exception:
         pass
     try:
-        conn.exec_driver_sql("alter table invitations add column project_id text references projects(id)")
+        _exec("alter table invitations add column project_id text references projects(id)")
     except Exception:
         pass
 

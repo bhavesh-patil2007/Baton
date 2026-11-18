@@ -10,7 +10,7 @@ const defaultHost =
     : "localhost";
 
 let activeApiBaseUrl: string = (
-  import.meta.env.VITE_API_URL ?? `http://${defaultHost}:8001`
+  import.meta.env.VITE_API_URL ?? `http://${defaultHost}:8000`
 ).replace(/\/$/, "");
 
 export function getApiBaseUrl(): string {
@@ -24,6 +24,18 @@ export function setApiBaseUrl(url: string): void {
 export const API_BASE_URL = activeApiBaseUrl;
 
 function getAlternativeUrl(url: string): string | null {
+  if (url.includes("//localhost:8000")) {
+    return url.replace("//localhost:8000", "//127.0.0.1:8000");
+  }
+  if (url.includes("//127.0.0.1:8000")) {
+    return url.replace("//127.0.0.1:8000", "//127.0.0.1:8001");
+  }
+  if (url.includes("//localhost:8001")) {
+    return url.replace("//localhost:8001", "//127.0.0.1:8001");
+  }
+  if (url.includes("//127.0.0.1:8001")) {
+    return url.replace("//127.0.0.1:8001", "//127.0.0.1:8000");
+  }
   if (url.includes("//localhost:")) {
     return url.replace("//localhost:", "//127.0.0.1:");
   }
@@ -344,9 +356,13 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
           signal: controller.signal,
         });
         if (altUrl.includes("//127.0.0.1:8000")) {
-          setApiBaseUrl(activeApiBaseUrl.replace("//localhost:8000", "//127.0.0.1:8000"));
+          setApiBaseUrl(activeApiBaseUrl.replace(/\/\/(localhost|127\.0\.0\.1):(8000|8001)/, "//127.0.0.1:8000"));
+        } else if (altUrl.includes("//127.0.0.1:8001")) {
+          setApiBaseUrl(activeApiBaseUrl.replace(/\/\/(localhost|127\.0\.0\.1):(8000|8001)/, "//127.0.0.1:8001"));
         } else if (altUrl.includes("//localhost:8000")) {
-          setApiBaseUrl(activeApiBaseUrl.replace("//127.0.0.1:8000", "//localhost:8000"));
+          setApiBaseUrl(activeApiBaseUrl.replace(/\/\/(localhost|127\.0\.0\.1):(8000|8001)/, "//localhost:8000"));
+        } else if (altUrl.includes("//localhost:8001")) {
+          setApiBaseUrl(activeApiBaseUrl.replace(/\/\/(localhost|127\.0\.0\.1):(8000|8001)/, "//localhost:8001"));
         }
       } else {
         throw primaryErr;
