@@ -33,7 +33,7 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     // -----------------------------------------------------------------------
     // Step 1: Open demo project, verify branding and progress bar
     // -----------------------------------------------------------------------
-    await expect(page.locator("aside, header")).toContainText("Baton");
+    await expect(page.locator("aside").first()).toContainText("Baton");
     await expect(page.locator("body")).toContainText(/Campus Event Portal|Payments Service/i);
 
     // Navigate to Reconstruct / Ledger step
@@ -66,7 +66,7 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     // Step 3: Open payments-owner conflict side-by-side
     // -----------------------------------------------------------------------
     // Switch to Conflicts filter tab
-    const conflictsTab = page.getByRole("button", { name: /Conflicts/i });
+    const conflictsTab = page.getByRole("button", { name: /Conflicts/i }).first();
     if (await conflictsTab.isVisible()) {
       await conflictsTab.click();
     }
@@ -94,7 +94,7 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     }
 
     // Bulk confirm remaining verified claims
-    const bulkConfirmBtn = page.getByRole("button", { name: "Confirm all verified" });
+    const bulkConfirmBtn = page.getByRole("button", { name: "Confirm all verified" }).first();
     if (await bulkConfirmBtn.isVisible() && (await bulkConfirmBtn.isEnabled())) {
       await bulkConfirmBtn.click();
       await page.waitForTimeout(500);
@@ -142,7 +142,7 @@ test.describe("Judge Walkthrough - 7 Step End-to-End Flow", () => {
     await expect(page.getByRole("heading", { name: /Handover for Campus Event Portal|Handover/i })).toBeVisible();
 
     // Verify restricted items are hidden behind count placeholder (role="note")
-    const placeholderNote = page.getByRole("note");
+    const placeholderNote = page.getByRole("note").first();
     if (await placeholderNote.isVisible()) {
       await expect(placeholderNote).toContainText(/hidden because of access level/i);
     }

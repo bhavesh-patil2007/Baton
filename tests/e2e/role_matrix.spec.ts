@@ -76,7 +76,7 @@ test.describe("Role Matrix and Access Control Verification", () => {
     await expect(page).toHaveURL(/.*handover/);
 
     // Verify placeholder exists for hidden higher-tier claims
-    const placeholder = page.getByRole("note");
+    const placeholder = page.getByRole("note").first();
     if (await placeholder.isVisible()) {
       await expect(placeholder).toContainText(/hidden because of access level/i);
     }
