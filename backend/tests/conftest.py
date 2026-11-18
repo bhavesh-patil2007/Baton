@@ -18,3 +18,24 @@ def client(tmp_path, monkeypatch):
 def login(client, role):
     data = client.post("/auth/demo-login", json={"role": role}).json()
     return {"Authorization": f"Bearer {data['token']}"}
+
+
+def make_supabase_token(
+    user_id: str,
+    email: str | None = None,
+    secret: str = "test-secret-at-least-32-bytes-long-for-hmac-sha256",
+    exp_delta: int = 3600,
+) -> str:
+    import time
+
+    import jwt
+
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "exp": int(time.time()) + exp_delta,
+        "aud": "authenticated",
+        "role": "authenticated",
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
+

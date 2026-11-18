@@ -1,11 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/app/auth";
 import { useLatestVersion } from "@/features/review/public";
 import { SourceDrawer } from "@/features/sources/public";
 import { EmptyState, ErrorState, Loading } from "@/shared/ui";
-import { acknowledge, getPlan, getView, respondOwnership, updateActionStatus, type EvidenceView } from "../api";
+import {
+  acknowledge,
+  createTask,
+  deleteTask,
+  getPlan,
+  getView,
+  respondOwnership,
+  updateActionStatus,
+  updateTask,
+  type EvidenceView,
+} from "../api";
 import { HiddenPlaceholder } from "../components/HiddenPlaceholder";
 import { PlanPanel } from "../components/PlanPanel";
 import { SectionBlock } from "../components/SectionBlock";
@@ -14,7 +23,6 @@ type Tab = "handover" | "plan";
 
 export function HandoverPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { version, isLoading: versionLoading, error: versionError, refetch } = useLatestVersion();
   const [tab, setTab] = useState<Tab>("handover");
@@ -44,6 +52,18 @@ export function HandoverPage() {
       updateActionStatus(versionId as string, v.claimId, v.status),
     onSuccess: refreshPlan,
   });
+  const createTaskMutation = useMutation({
+    mutationFn: (data: any) => createTask({ ...data, version_id: versionId as string }),
+    onSuccess: refreshPlan,
+  });
+  const updateTaskMutation = useMutation({
+    mutationFn: (v: { taskId: string; data: any }) => updateTask(v.taskId, { ...v.data, version_id: versionId as string }),
+    onSuccess: refreshPlan,
+  });
+  const deleteTaskMutation = useMutation({
+    mutationFn: (taskId: string) => deleteTask(versionId as string, taskId),
+    onSuccess: refreshPlan,
+  });
 
   if (versionLoading) return <Loading label="Finding the approved handover" />;
   if (versionError) return <ErrorState title="Could not load versions" detail={versionError.message} onRetry={() => void refetch()} />;
@@ -60,28 +80,16 @@ export function HandoverPage() {
   const mutationError = (ack.error ?? respond.error) as Error | null;
   return (
     <div className="space-y-6 max-w-7xl mx-auto w-full pb-12 animate-in fade-in duration-300">
-      {/* Header with Back Navigation and High-Contrast Typography */}
-      <header className="flex items-start sm:items-center gap-3 sm:gap-4">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="p-2 sm:p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 shadow-sm transition-all dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10 cursor-pointer flex-shrink-0"
-          aria-label="Go back"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-        </button>
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-            Handover for Campus Event Portal
-          </h1>
-          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-gray-300">
-            Version {version.version_id}, approved {version.approved_at ? new Date(version.approved_at).toLocaleDateString() : "recently"}
-            {version.snapshot_hash ? `, snapshot ${version.snapshot_hash.replace("sha256:", "").slice(0, 10)}` : ""}.
-            Every claim links to its source quote.
-          </p>
-        </div>
+      {/* Header with High-Contrast Typography */}
+      <header>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+          Handover for Campus Event Portal
+        </h1>
+        <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+          Version {version.version_id}, approved {version.approved_at ? new Date(version.approved_at).toLocaleDateString() : "recently"}
+          {version.snapshot_hash ? `, snapshot ${version.snapshot_hash.replace("sha256:", "").slice(0, 10)}` : ""}.
+          Every claim links to its source quote.
+        </p>
       </header>
 
       {view.data && !view.data.can_acknowledge && (
@@ -101,7 +109,7 @@ export function HandoverPage() {
             className={`pb-3 -mb-px transition cursor-pointer font-bold ${
               tab === t
                 ? "border-b-2 border-indigo-600 text-indigo-700 dark:text-white dark:border-indigo-500 shadow-[0_4px_12px_rgba(99,102,241,0.25)]"
-                : "border-b-2 border-transparent text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200"
+                : "border-b-2 border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
             }`}
           >
             {t === "handover" ? "Handover Package" : "Day 1, Week 1, Month 1 Action Plan"}
@@ -130,24 +138,36 @@ export function HandoverPage() {
               onOpenCitation={setCitation}
             />
           ))}
-          <p className="text-xs text-gray-400 font-mono">{view.data.receipt_note}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{view.data.receipt_note}</p>
         </div>
       )}
 
       {tab === "plan" && (
         <div>
-          {plan.isLoading && <Loading label="Building the plan" />}
           {plan.error && <ErrorState title="Could not build the plan" detail={(plan.error as Error).message} onRetry={() => void plan.refetch()} />}
-          {plan.data && (
-            <>
-              <PlanPanel
-                plan={plan.data.plan}
-                onOpenCitation={setCitation}
-                onUpdateStatus={(claimId, status) => statusMutation.mutate({ claimId, status })}
-              />
-              <p className="mt-6 text-xs text-gray-400 font-mono">{plan.data.note}</p>
-            </>
-          )}
+          <PlanPanel
+            plan={plan.data?.plan}
+            versionId={versionId as string}
+            isLoading={plan.isLoading}
+            isApprover={user?.role === "approver"}
+            currentUserId={user?.id}
+            currentUserName={user?.name}
+            currentUserRole={user?.role}
+            onOpenCitation={setCitation}
+            onUpdateStatus={async (claimId, status) => {
+              await statusMutation.mutateAsync({ claimId, status });
+            }}
+            onCreateTask={async (data) => {
+              await createTaskMutation.mutateAsync(data);
+            }}
+            onUpdateTask={async (taskId, data) => {
+              await updateTaskMutation.mutateAsync({ taskId, data });
+            }}
+            onDeleteTask={async (taskId) => {
+              await deleteTaskMutation.mutateAsync(taskId);
+            }}
+          />
+          {plan.data && <p className="mt-6 text-xs text-slate-500 dark:text-slate-400 font-mono">{plan.data.note}</p>}
         </div>
       )}
 
