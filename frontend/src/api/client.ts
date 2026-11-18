@@ -256,6 +256,52 @@ export interface ReviewActionPayload {
   chosen_claim_id?: string;
 }
 
+export interface GraphNode {
+  id: string;
+  label: string;
+  type: "person" | "module" | "task" | "claim" | "source";
+  metadata?: {
+    status?: string;
+    state?: string;
+    confidence?: string;
+    statement?: string;
+    entity_key?: string;
+    attribute?: string;
+    source_type?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface GraphEvidence {
+  chunk_id?: string;
+  quote?: string;
+  source_id?: string;
+  source_title?: string;
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: "OWNS" | "AUTHORED" | "REVIEWED" | "IMPORTS" | "BLOCKS" | "SUPPORTED BY" | string;
+  count?: number;
+  evidence?: GraphEvidence[];
+  evidence_chunk_id?: string;
+  evidence_quote?: string;
+  source_title?: string;
+  source_id?: string;
+}
+
+export interface KnowledgeGraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  summary: {
+    total_nodes: number;
+    connections: number;
+    people: number;
+  };
+}
+
 /* =========================================================================
    Token Management
    ========================================================================= */
@@ -502,6 +548,7 @@ export const batonApi = {
   getRiskRadar: () => apiClient.get<RiskModule[]>("/risk-radar"),
   getTimeline: () => apiClient.get<TimelineEvent[]>("/timeline"),
   getDeliveryStatus: () => apiClient.get<DeliveryStatusItem[]>("/delivery-status"),
+  getKnowledgeGraph: () => apiClient.get<KnowledgeGraphData>("/graph"),
 
   // Live Ping helper for status indicators
   measureLatency: async (): Promise<number> => {
