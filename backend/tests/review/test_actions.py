@@ -139,7 +139,11 @@ def test_decision_history_persists_rationale_states_and_linked_evidence(act, cli
         assert event["detail"]["rationale"] == fields["note"]
         assert event["detail"]["before"]
         assert event["detail"]["after"]
+        assert event["detail"]["prior_state"] == event["detail"]["before"]
+        assert event["detail"]["new_state"] == event["detail"]["after"]
         assert isinstance(event["detail"]["evidence"], list)
+        assert event["detail"]["linked_evidence"] == event["detail"]["evidence"]
+        assert "evidence_ids" in event["detail"]
     confirmed = next(e for e in events if e["event_type"] == "review.confirm")
     assert confirmed["detail"]["before"]["state"] == "Verified"
     assert confirmed["detail"]["after"]["state"] == "Verified"
@@ -192,3 +196,9 @@ def test_review_events_are_immutable(act, Session):
 def test_unknown_action_and_extra_fields_rejected(client):
     assert client.post("/review/c-test/action", json={"action": "nuke"}, headers=H()).status_code == 422
     assert client.post("/review/c-test/action", json={"action": "confirm", "x": 1}, headers=H()).status_code == 422
+
+
+@pytest.mark.parametrize("role", ["leaver", "incoming_maintainer", "incoming_contributor", "", "hacker"])
+def test_direct_lower_role_api_calls_cannot_read_audit_history(client, role):
+    response = client.get("/audit", headers=H(role))
+    assert response.status_code == 403

@@ -133,6 +133,7 @@ def _record(
     )
     ctx.session.add(row)
     ctx.session.flush()
+    evidence_refs = _decision_evidence(ctx, claim_id)
     record_event(
         ctx.session,
         ctx.actor,
@@ -145,8 +146,12 @@ def _record(
             "note": note,
             "rationale": note,
             "before": before,
+            "prior_state": before,
             "after": after,
-            "evidence": _decision_evidence(ctx, claim_id),
+            "new_state": after,
+            "evidence": evidence_refs,
+            "linked_evidence": evidence_refs,
+            "evidence_ids": [e["chunk_id"] for e in evidence_refs if e.get("chunk_id")],
         },
     )
     return row
