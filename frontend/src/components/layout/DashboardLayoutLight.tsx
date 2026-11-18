@@ -140,9 +140,9 @@ export const DashboardLayoutLight: React.FC<DashboardLayoutLightProps> = ({
 
   const roleNavAllowed: Record<string, string[]> = {
     approver: ["/dashboard", "/sources", "/ledger", "/graph", "/risk", "/review", "/handover", "/access", "/audit", "/settings"],
-    leaver: ["/dashboard", "/ledger", "/graph", "/risk", "/audit", "/settings"],
-    incoming_maintainer: ["/dashboard", "/ledger", "/graph", "/risk", "/handover", "/settings"],
-    incoming_contributor: ["/dashboard", "/ledger", "/graph", "/handover", "/settings"],
+    leaver: ["/dashboard", "/ledger", "/graph", "/risk", "/review", "/audit", "/settings"],
+    incoming_maintainer: ["/dashboard", "/ledger", "/graph", "/risk", "/review", "/handover", "/settings"],
+    incoming_contributor: ["/dashboard", "/ledger", "/graph", "/review", "/handover", "/settings"],
   };
 
   const navItems = useMemo(() => {
