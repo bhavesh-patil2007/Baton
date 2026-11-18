@@ -117,7 +117,7 @@ export function ClaimDetailModal({ claim, onClose, onOpenSource }: ClaimDetailMo
             )}
             {claim.attested_by && (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <span className="text-slate-500 font-medium">Attested By:</span> <span className="text-slate-900 font-semibold">{claim.attested_by}</span>
+                <span className="text-slate-500 font-medium">Approved By:</span> <span className="text-slate-900 font-semibold">{claim.attested_by}</span>
               </div>
             )}
           </div>
