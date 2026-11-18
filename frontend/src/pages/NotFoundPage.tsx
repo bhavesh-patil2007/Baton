@@ -13,7 +13,7 @@ export const NotFoundPage: React.FC = () => {
         <div className="w-14 h-14 mx-auto rounded-2xl bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 flex items-center justify-center font-bold text-2xl shadow-sm">
           <Compass className="w-7 h-7 text-purple-600 dark:text-purple-400" />
         </div>
-        
+
         <div className="space-y-1.5">
           <span className="text-xs font-mono font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest">
             404 Error

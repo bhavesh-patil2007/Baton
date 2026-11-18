@@ -1,5 +1,10 @@
 /** API client. FROZEN after Day 0. */
-const BASE = (import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
+const defaultHost =
+  typeof window !== "undefined" && window.location.hostname
+    ? window.location.hostname
+    : "localhost";
+
+let BASE = (import.meta.env.VITE_API_URL ?? `http://${defaultHost}:8000`).replace(/\/$/, "");
 const TOKEN_KEY = "baton.token";
 
 export class ApiError extends Error {
@@ -50,7 +55,15 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
       if (url.includes("//localhost:8000")) {
         altUrl = url.replace("//localhost:8000", "//127.0.0.1:8000");
       } else if (url.includes("//127.0.0.1:8000")) {
-        altUrl = url.replace("//127.0.0.1:8000", "//localhost:8000");
+        altUrl = url.replace("//127.0.0.1:8000", "//127.0.0.1:8001");
+      } else if (url.includes("//localhost:8001")) {
+        altUrl = url.replace("//localhost:8001", "//127.0.0.1:8001");
+      } else if (url.includes("//127.0.0.1:8001")) {
+        altUrl = url.replace("//127.0.0.1:8001", "//127.0.0.1:8000");
+      } else if (url.includes("//localhost:")) {
+        altUrl = url.replace("//localhost:", "//127.0.0.1:");
+      } else if (url.includes("//127.0.0.1:")) {
+        altUrl = url.replace("//127.0.0.1:", "//localhost:");
       }
       if (altUrl) {
         response = await fetch(altUrl, {
@@ -58,6 +71,11 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
           headers: requestHeaders,
           body: init.body === undefined ? undefined : JSON.stringify(init.body),
         });
+        if (altUrl.includes(":8001")) {
+          BASE = BASE.replace(":8000", ":8001");
+        } else if (altUrl.includes(":8000")) {
+          BASE = BASE.replace(":8001", ":8000");
+        }
       } else {
         throw primaryErr;
       }

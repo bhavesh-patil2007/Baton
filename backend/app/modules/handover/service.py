@@ -531,7 +531,7 @@ def update_task(session: Session, user: User, version_id: str, task_id: str, bod
                 update handover_tasks
                 set title = :title, status = :status, owner = :owner, due_date = :due_date, notes = :notes,
                     blocked_by = :blocked_by, updated_by = :uid, updated_at = :at
-                where id = :id and version_id = :v
+                where id = :id and version_id = :v and project_id = :p
             """),
             {
                 "title": new_title,
@@ -544,12 +544,13 @@ def update_task(session: Session, user: User, version_id: str, task_id: str, bod
                 "at": now,
                 "id": task_id,
                 "v": version_id,
+                "p": user.project_id,
             },
         )
     else:
         existing_status = session.execute(
-            text("select id from plan_action_status where version_id = :v and claim_id = :c"),
-            {"v": version_id, "c": task_id},
+            text("select id from plan_action_status where version_id = :v and claim_id = :c and project_id = :p"),
+            {"v": version_id, "c": task_id, "p": user.project_id},
         ).first()
         if existing_status:
             session.execute(
@@ -557,7 +558,7 @@ def update_task(session: Session, user: User, version_id: str, task_id: str, bod
                     update plan_action_status
                     set status = :status, owner = :owner, due_date = :due_date, notes = :notes,
                         updated_by = :uid, updated_at = :at
-                    where id = :id
+                    where id = :id and project_id = :p
                 """),
                 {
                     "status": new_status,
@@ -567,6 +568,7 @@ def update_task(session: Session, user: User, version_id: str, task_id: str, bod
                     "uid": user.id,
                     "at": now,
                     "id": existing_status[0],
+                    "p": user.project_id,
                 },
             )
         else:
@@ -639,8 +641,8 @@ def delete_task(session: Session, user: User, version_id: str, task_id: str) -> 
     now = audit.now_iso()
     if task.get("is_custom"):
         session.execute(
-            text("delete from handover_tasks where id = :id and version_id = :v"),
-            {"id": task_id, "v": version_id},
+            text("delete from handover_tasks where id = :id and version_id = :v and project_id = :p"),
+            {"id": task_id, "v": version_id, "p": user.project_id},
         )
     else:
         session.execute(
@@ -772,14 +774,14 @@ def respond_ownership(session: Session, user: User, version_id: str, claim_id: s
     if claim["proposed_owner_id"] != user.id:
         raise HTTPException(status_code=403, detail="This ownership was proposed for someone else.")
     when = audit.now_iso()
-    params = {"v": version_id, "c": claim_id, "u": user.id}
+    params = {"v": version_id, "c": claim_id, "u": user.id, "p": user.project_id}
     existing = session.execute(
-        text("select id from ownership_responses where version_id = :v and claim_id = :c and user_id = :u"), params
+        text("select id from ownership_responses where version_id = :v and claim_id = :c and user_id = :u and project_id = :p"), params
     ).first()
     if existing:
         session.execute(
-            text("update ownership_responses set response = :resp, note = :note, responded_at = :at where id = :id"),
-            {"resp": response, "note": note, "at": when, "id": existing[0]},
+            text("update ownership_responses set response = :resp, note = :note, responded_at = :at where id = :id and project_id = :p"),
+            {"resp": response, "note": note, "at": when, "id": existing[0], "p": user.project_id},
         )
     else:
         session.execute(

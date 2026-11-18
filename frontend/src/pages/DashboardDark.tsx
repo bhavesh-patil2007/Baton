@@ -21,14 +21,15 @@ import {
 import { DashboardLayoutDark } from "../components/layout/DashboardLayoutDark";
 import { FallbackHero } from "../components/hero/FallbackHero";
 import { DocumentUploader } from "../components/upload/DocumentUploader";
-import { CloudUpload, X, Plus, RotateCcw, Download, ShieldCheck, Share2, Compass, FileText } from "lucide-react";
+import { InviteMemberModal } from "../components/invitation/InviteMemberModal";
+import { CloudUpload, X, Plus, RotateCcw, Download, ShieldCheck, Share2, Compass, FileText, UserPlus } from "lucide-react";
 
 const ThreeHeroNode = React.lazy(() =>
   import("../components/hero/ThreeHeroNode").then(({ ThreeHeroNode }) => ({ default: ThreeHeroNode })),
 );
 
 export const DashboardDark: React.FC<{ withLayout?: boolean }> = ({ withLayout = false }) => {
-  const { user } = useAuth();
+  const { user, activeProject } = useAuth();
   const navigate = useNavigate();
 
   // Dynamic Live State from Backend APIs
@@ -39,6 +40,7 @@ export const DashboardDark: React.FC<{ withLayout?: boolean }> = ({ withLayout =
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [uploadModalOpen, setUploadModalOpen] = useState<boolean>(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState<boolean>(false);
 
   // Fetch live backend data concurrently
   const loadDashboardData = async () => {
@@ -122,9 +124,9 @@ export const DashboardDark: React.FC<{ withLayout?: boolean }> = ({ withLayout =
   const roleQuickActions = useMemo(() => {
     if (user?.role === "approver") {
       return [
+        { name: "Invite Member", onClick: () => setInviteModalOpen(true), icon: UserPlus },
         { name: "Sources", path: "/sources", icon: Plus },
         { name: "Reconstruct", path: "/ledger", icon: RotateCcw },
-        { name: "Handover", path: "/handover", icon: Download },
         { name: "Access Control", path: "/access", icon: ShieldCheck },
       ];
     }
@@ -256,6 +258,17 @@ export const DashboardDark: React.FC<{ withLayout?: boolean }> = ({ withLayout =
               <Share2 className="w-4 h-4 text-purple-400" />
               <span>View Knowledge Graph</span>
             </button>
+
+            {user?.role === "approver" && (
+              <button
+                type="button"
+                onClick={() => setInviteModalOpen(true)}
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-indigo-950/50 hover:bg-indigo-900/60 border border-indigo-500/40 text-indigo-300 font-semibold text-xs sm:text-sm shadow-xs hover:border-indigo-400 transition-all cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4 text-indigo-400" />
+                <span>Invite Member</span>
+              </button>
+            )}
 
             {(user?.role === "approver" || user?.role === "leaver") && (
               <button
@@ -413,9 +426,20 @@ export const DashboardDark: React.FC<{ withLayout?: boolean }> = ({ withLayout =
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
               </svg>
             </div>
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-slate-300 border border-white/10">
-              → 0%
-            </span>
+            {user?.role === "approver" ? (
+              <button
+                type="button"
+                onClick={() => setInviteModalOpen(true)}
+                className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-purple-950/60 text-purple-300 border border-purple-500/40 hover:bg-purple-900/60 transition-colors cursor-pointer"
+              >
+                <UserPlus className="w-3 h-3 text-purple-400" />
+                <span>Invite Member</span>
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-slate-300 border border-white/10">
+                → 0%
+              </span>
+            )}
           </div>
 
           <div className="mt-4">
@@ -755,7 +779,7 @@ export const DashboardDark: React.FC<{ withLayout?: boolean }> = ({ withLayout =
                 <button
                   key={action.name}
                   type="button"
-                  onClick={() => navigate(action.path)}
+                  onClick={() => (action.onClick ? action.onClick() : action.path ? navigate(action.path) : undefined)}
                   className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/40 flex flex-col items-center gap-1 text-gray-300 hover:text-white active:scale-[0.98] transition-all duration-150 group cursor-pointer"
                 >
                   <ActionIcon className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
@@ -766,6 +790,14 @@ export const DashboardDark: React.FC<{ withLayout?: boolean }> = ({ withLayout =
           </div>
         </div>
       </section>
+
+      {/* Invite Member Modal */}
+      <InviteMemberModal
+        isOpen={inviteModalOpen}
+        onClose={() => setInviteModalOpen(false)}
+        projectId={user?.project_id}
+        projectName={activeProject?.name || "Active Project"}
+      />
     </div>
   );
 

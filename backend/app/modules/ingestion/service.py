@@ -570,6 +570,32 @@ def complete_oauth_flow(
 
     state_data = crypto.verify_and_consume_oauth_state(session, state_token, expected_provider=provider)
     project_id = state_data["project_id"]
+    user_id = state_data.get("user_id")
+    if user_id:
+        has_pm = session.execute(
+            text("select 1 from project_memberships where user_id = :uid limit 1"),
+            {"uid": user_id},
+        ).scalar() is not None
+
+        if has_pm:
+            approver_check = session.execute(
+                text("""
+                    select 1 from project_memberships
+                    where user_id = :uid and project_id = :pid and role = 'approver' and active = 1
+                """),
+                {"uid": user_id, "pid": project_id},
+            ).first()
+        else:
+            approver_check = session.execute(
+                text("""
+                    select 1 from members
+                    where id = :uid and project_id = :pid and role = 'approver' and active = 1
+                """),
+                {"uid": user_id, "pid": project_id},
+            ).first()
+        if not approver_check:
+            raise crypto.OAuthStateError("The user who initiated this OAuth connection is no longer an active Approver.")
+
     target_name = state_data.get("target_name") or f"{provider}-connected"
     acl_label = state_data.get("acl_label") or "L1"
 
@@ -600,9 +626,9 @@ def complete_oauth_flow(
                     auth_status = 'connected',
                     error_message = null,
                     updated_at = :now
-                where id = :id
+                where id = :id and project_id = :p
             """),
-            {"id": conn_id, "now": now},
+            {"id": conn_id, "p": project_id, "now": now},
         )
         session.commit()
     else:
@@ -874,8 +900,8 @@ def sync_connection(session: Session, project_id: str, connection_id: str) -> di
 
     now = datetime.now(UTC).isoformat()
     session.execute(
-        text("update source_connections set status = 'syncing', updated_at = :now where id = :id"),
-        {"id": connection_id, "now": now},
+        text("update source_connections set status = 'syncing', updated_at = :now where id = :id and project_id = :p"),
+        {"id": connection_id, "p": project_id, "now": now},
     )
     session.commit()
 

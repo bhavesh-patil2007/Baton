@@ -37,6 +37,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { batonApi } from "../../api/client";
 import { isSupabaseConfigured } from "../../features/auth/supabase";
 import { linkGithubIdentity } from "../../features/auth/linkGithubIdentity";
+import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ConfirmModal } from "../../shared/ui";
 
 interface DashboardLayoutDarkProps {
@@ -528,6 +529,9 @@ export const DashboardLayoutDark: React.FC<DashboardLayoutDarkProps> = ({
               <span className="text-slate-600 hidden sm:inline">|</span>
               <span className="text-emerald-400 text-[10px] sm:text-[11px] font-mono">{latencyMs}ms</span>
             </div>
+
+            {/* Project Switcher */}
+            <ProjectSwitcher />
 
             {/* Theme Toggle Button -> Switches to Light Mode */}
             <button

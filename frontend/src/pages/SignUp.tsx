@@ -30,12 +30,14 @@ import {
   Moon,
   Sparkles,
   KeyRound,
+  FolderGit2,
 } from "lucide-react";
 import { useAuth } from "@/app/auth";
 import { useTheme } from "@/context/ThemeContext";
 import { isSupabaseConfigured, supabase } from "@/features/auth/supabase";
 import type { Role } from "@/shared/types";
 import { ROLE_LABELS } from "@/shared/types";
+import type { ProjectItem } from "@/api/client";
 
 const ROLE_OPTIONS: { role: Role; title: string; subtitle: string; badge?: string }[] = [
   {
@@ -280,7 +282,7 @@ function KnowledgeOrbit() {
 export function SignUp() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { switchRole, loginDemo, register, syncSession } = useAuth();
+  const { switchRole, loginDemo, register, syncSession, createProject, joinProject, switchProject, fetchProjects } = useAuth();
   const { toggleTheme, isDark } = useTheme();
 
   // 1. Toggle State: false = Registration (Sign Up), true = Login
@@ -345,6 +347,30 @@ export function SignUp() {
     email: string;
     name: string;
   } | null>(null);
+  const [pendingProjectOnboarding, setPendingProjectOnboarding] = useState<{
+    user_id: string;
+    email: string;
+    name: string;
+  } | null>(null);
+  const [onboardingMode, setOnboardingMode] = useState<"create" | "join" | "existing">("create");
+  const [newProjectName, setNewProjectName] = useState("");
+  const [joinInviteCode, setJoinInviteCode] = useState("");
+  const [existingProjects, setExistingProjects] = useState<ProjectItem[]>([]);
+  const [loadingExistingProjects, setLoadingExistingProjects] = useState(false);
+
+  const loadExistingProjects = useCallback(async () => {
+    setLoadingExistingProjects(true);
+    try {
+      const projs = await fetchProjects();
+      setExistingProjects(projs);
+      return projs;
+    } catch {
+      setExistingProjects([]);
+      return [];
+    } finally {
+      setLoadingExistingProjects(false);
+    }
+  }, [fetchProjects]);
 
   const [showPassword, setShowPassword] = useState(false);
   const [showRepeatPassword, setShowRepeatPassword] = useState(false);
@@ -391,6 +417,26 @@ export function SignUp() {
         if (syncResult.registered) {
           sessionStorage.removeItem("baton.pending_role");
           sessionStorage.removeItem("baton.pending_invite");
+          if (syncResult.requires_project) {
+            try {
+              const userProjects = await fetchProjects();
+              if (userProjects && userProjects.length > 0) {
+                await switchProject(userProjects[0].id);
+                navigate("/dashboard", { replace: true });
+                return;
+              }
+            } catch {
+              // Proceed to onboarding modal
+            }
+            setPendingProjectOnboarding({
+              user_id: activeSession.id,
+              email: activeSession.email,
+              name: (activeSession.user_metadata?.full_name as string) || activeSession.email.split("@")[0],
+            });
+            setOnboardingMode("create");
+            void loadExistingProjects();
+            return;
+          }
           navigate("/dashboard", { replace: true });
           return;
         }
@@ -457,6 +503,50 @@ export function SignUp() {
       navigate("/dashboard", { replace: true });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to complete account setup.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCompleteProjectOnboarding = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!pendingProjectOnboarding) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (onboardingMode === "create") {
+        if (!newProjectName.trim()) {
+          setError("Please enter a name for your new project.");
+          setSubmitting(false);
+          return;
+        }
+        await createProject(newProjectName.trim());
+      } else {
+        if (!joinInviteCode.trim()) {
+          setError("Please enter an invitation code to join a project.");
+          setSubmitting(false);
+          return;
+        }
+        await joinProject(joinInviteCode.trim());
+      }
+      setPendingProjectOnboarding(null);
+      navigate("/dashboard", { replace: true });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to set up project.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSelectExistingProject = async (projectId: string) => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await switchProject(projectId);
+      setPendingProjectOnboarding(null);
+      navigate("/dashboard", { replace: true });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to open project.");
     } finally {
       setSubmitting(false);
     }
@@ -696,15 +786,15 @@ export function SignUp() {
     }
   };
 
-  // 1-Click Demo Workspace Handler
-  const handleDemoLogin = async () => {
+  // 1-Click Demo Workspace Handler (all four roles supported)
+  const handleDemoLogin = async (role: Role = "approver") => {
     setSubmitting(true);
     setError(null);
     try {
       if (loginDemo) {
-        await loginDemo("approver");
+        await loginDemo(role);
       } else {
-        await switchRole("approver");
+        await switchRole(role);
       }
       navigate("/dashboard");
     } catch (cause) {
@@ -754,7 +844,7 @@ export function SignUp() {
           {/* 1-Click Demo Mode Button */}
           <button
             type="button"
-            onClick={handleDemoLogin}
+            onClick={() => void handleDemoLogin("approver")}
             disabled={submitting}
             className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer shadow-xs ${
               isDark
@@ -931,6 +1021,19 @@ export function SignUp() {
                     <span className="w-1.5 h-1.5 rounded-full bg-rose-500 flex-shrink-0 mt-1.5" />
                     <span>{error}</span>
                   </div>
+                  {error.includes("GitHub sign-in could not finish") && (
+                    <div className="mt-3 pt-2.5 border-t border-rose-200/80 dark:border-rose-800/60 flex flex-col sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleDemoLogin("approver")}
+                        disabled={submitting}
+                        className="w-full py-2 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Bypass & Enter Workspace (1-Click Demo) →</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1397,24 +1500,55 @@ export function SignUp() {
               </div>}
 
               {/* 1-Click Demo Workspace Option */}
-              {!isForgotPassword && !isRecovery && <div className="mt-5 pt-4 border-t border-dashed border-indigo-400/25 text-center">
-                <button
-                  type="button"
-                  onClick={handleDemoLogin}
-                  disabled={submitting}
-                  className={`w-full py-2.5 px-4 rounded-xl border flex items-center justify-center gap-2 text-xs font-bold transition-all cursor-pointer shadow-sm ${
-                    isDark
-                      ? "bg-gradient-to-r from-purple-950/60 to-indigo-950/60 border-purple-500/40 text-purple-200 hover:border-purple-400 hover:text-white hover:brightness-110"
-                      : "bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200 text-purple-800 hover:bg-purple-100 hover:border-purple-300"
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-purple-500 animate-pulse" />
-                  <span>Launch Demo Workspace (1-Click Instant Access) →</span>
-                </button>
-                <p className={`text-[11px] mt-1.5 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                  Explore preloaded project state, claims ledger, and risk radar.
-                </p>
-              </div>}
+              {!isForgotPassword && !isRecovery && (
+                <div className="mt-5 pt-4 border-t border-dashed border-indigo-400/25 space-y-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleDemoLogin("approver")}
+                    disabled={submitting}
+                    className={`w-full py-2.5 px-4 rounded-xl border flex items-center justify-center gap-2 text-xs font-bold transition-all cursor-pointer shadow-sm ${
+                      isDark
+                        ? "bg-gradient-to-r from-purple-950/60 to-indigo-950/60 border-purple-500/40 text-purple-200 hover:border-purple-400 hover:text-white hover:brightness-110"
+                        : "bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200 text-purple-800 hover:bg-purple-100 hover:border-purple-300"
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-purple-500 animate-pulse" />
+                    <span>Launch Demo Workspace (1-Click Instant Access) →</span>
+                  </button>
+
+                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                    <span className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                      Switch Persona:
+                    </span>
+                    {(
+                      [
+                        { role: "approver", label: "Approver" },
+                        { role: "leaver", label: "Aarav (Leaver)" },
+                        { role: "incoming_maintainer", label: "Meera (Maintainer)" },
+                        { role: "incoming_contributor", label: "Contributor" },
+                      ] as const
+                    ).map(({ role, label }) => (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => handleDemoLogin(role)}
+                        disabled={submitting}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                          isDark
+                            ? "bg-white/5 border-white/10 text-slate-300 hover:bg-purple-950/40 hover:text-purple-300 hover:border-purple-500/40"
+                            : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className={`text-[11px] text-center ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                    Explore preloaded Campus Event Portal state, claims ledger, and risk radar.
+                  </p>
+                </div>
+              )}
 
               {/* Bottom Mode Toggle Link Button */}
               <div
@@ -1537,6 +1671,212 @@ export function SignUp() {
                 <span>{submitting ? "Finishing Setup…" : "Finish Setup & Enter Baton →"}</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Project Onboarding Modal (For 0-project users: Create Project or Join with Code) */}
+      {pendingProjectOnboarding && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in"
+        >
+          <div
+            className={`w-full max-w-lg rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5 border ${
+              isDark ? "bg-[#0d1024] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"
+            }`}
+          >
+            <div>
+              <h2 className="text-xl font-bold tracking-tight">Set Up Your First Project</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Welcome, {pendingProjectOnboarding.name}! To get started with Baton, create your own project or join an existing team:
+              </p>
+            </div>
+
+            {error && (
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs">
+                {error}
+              </div>
+            )}
+
+            <div className="grid grid-cols-3 rounded-xl bg-slate-100 dark:bg-white/5 p-1 gap-1">
+              <button
+                type="button"
+                onClick={() => setOnboardingMode("create")}
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition-all text-center ${
+                  onboardingMode === "create"
+                    ? "bg-white dark:bg-purple-600 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                }`}
+              >
+                Create New Project
+              </button>
+              <button
+                type="button"
+                onClick={() => setOnboardingMode("join")}
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition-all text-center ${
+                  onboardingMode === "join"
+                    ? "bg-white dark:bg-purple-600 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                }`}
+              >
+                Join with Code
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOnboardingMode("existing");
+                  void loadExistingProjects();
+                }}
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition-all text-center ${
+                  onboardingMode === "existing"
+                    ? "bg-white dark:bg-purple-600 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                }`}
+              >
+                Open Existing Project
+              </button>
+            </div>
+
+            {onboardingMode === "create" ? (
+              <div className="space-y-3">
+                <div>
+                  <label
+                    htmlFor="onboarding-project-name"
+                    className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1"
+                  >
+                    Project Name
+                  </label>
+                  <input
+                    id="onboarding-project-name"
+                    type="text"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    placeholder="e.g. Core Banking Platform"
+                    className={`w-full py-2.5 px-3 rounded-xl text-sm font-medium focus:outline-none border transition-colors ${
+                      isDark ? "text-white bg-white/5 border-white/10 focus:border-purple-500" : "text-slate-900 bg-slate-50 border-slate-200 focus:border-purple-600"
+                    }`}
+                  />
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                    You will be assigned the Engineering Lead (Approver) role for this project.
+                  </p>
+                </div>
+              </div>
+            ) : onboardingMode === "join" ? (
+              <div className="space-y-3">
+                <div>
+                  <label
+                    htmlFor="onboarding-invite-code"
+                    className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1"
+                  >
+                    Invitation Code
+                  </label>
+                  <input
+                    id="onboarding-invite-code"
+                    type="text"
+                    value={joinInviteCode}
+                    onChange={(e) => setJoinInviteCode(e.target.value)}
+                    placeholder="e.g. INV-LEAVER-7B8A91C2"
+                    className={`w-full py-2.5 px-3 rounded-xl text-sm font-medium focus:outline-none border transition-colors ${
+                      isDark ? "text-white bg-white/5 border-white/10 focus:border-purple-500" : "text-slate-900 bg-slate-50 border-slate-200 focus:border-purple-600"
+                    }`}
+                  />
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                    Paste the single-use invite code provided by your project administrator.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {loadingExistingProjects ? (
+                  <div className="py-8 flex flex-col items-center justify-center gap-2 text-slate-400">
+                    <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs">Loading existing projects…</span>
+                  </div>
+                ) : existingProjects.length > 0 ? (
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      Your Active Projects ({existingProjects.length})
+                    </p>
+                    {existingProjects.map((p) => {
+                      let roleBadgeClass = "bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300 dark:border-purple-600/40";
+                      if (p.role === "leaver") roleBadgeClass = "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-600/40";
+                      else if (p.role === "incoming_maintainer") roleBadgeClass = "bg-cyan-100 text-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-300 dark:border-cyan-600/40";
+                      else if (p.role === "incoming_contributor") roleBadgeClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-600/40";
+
+                      return (
+                        <div
+                          key={p.id}
+                          className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-colors ${
+                            isDark ? "bg-white/5 border-white/10 hover:border-purple-500/50" : "bg-slate-50 border-slate-200 hover:border-purple-300"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                              {p.name}
+                            </p>
+                            <span className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${roleBadgeClass}`}>
+                              {ROLE_LABELS[p.role] || p.role}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleSelectExistingProject(p.id)}
+                            disabled={submitting}
+                            className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white transition-colors flex items-center gap-1 cursor-pointer flex-shrink-0 disabled:opacity-50"
+                          >
+                            <span>Open</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="py-6 px-4 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 text-center space-y-3">
+                    <div className="w-10 h-10 mx-auto rounded-xl bg-purple-100 dark:bg-purple-950/40 flex items-center justify-center text-purple-600 dark:text-purple-400">
+                      <FolderGit2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">No Existing Projects</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs mx-auto">
+                        Your account is not associated with any active projects yet.
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setOnboardingMode("create")}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-500 cursor-pointer"
+                      >
+                        Create Project
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOnboardingMode("join")}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-white/10 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 cursor-pointer"
+                      >
+                        Join Team
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {onboardingMode !== "existing" && (
+              <div className="pt-2 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleCompleteProjectOnboarding}
+                  disabled={submitting}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-sm text-white shadow-lg shadow-purple-600/30 bg-purple-600 hover:bg-purple-500 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <span>{submitting ? "Setting Up Project…" : onboardingMode === "create" ? "Create Project & Enter Baton →" : "Join Project & Enter Baton →"}</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

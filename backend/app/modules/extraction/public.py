@@ -11,8 +11,8 @@ def start_reconstruct(project_id: str, mode: str | None = None) -> dict[str, Any
     return service.start_reconstruct(project_id, mode=mode)
 
 
-def get_job(job_id: str) -> dict[str, Any] | None:
-    return service.get_job(job_id)
+def get_job(job_id: str, project_id: str | None = None) -> dict[str, Any] | None:
+    return service.get_job(job_id, project_id=project_id)
 
 
 def reset_demo(session: Session) -> None:
